@@ -22,5 +22,11 @@ jobs:
       - name: Build (Release, all projects)
         run: dotnet build Pinion.slnx -c Release
 
+      # Fast suite: source-level + analysis tests (excludes the slow end-to-end tier below).
       - name: Test
-        run: dotnet test tests/Pinion.Tests/Pinion.Tests.csproj -c Release --no-build
+        run: dotnet test tests/Pinion.Tests/Pinion.Tests.csproj -c Release --no-build --filter "Category!=EndToEnd"
+
+      # End-to-end guard: actually synthesizes, builds, runs, and snapshots a generated test against
+      # the LegacyShop sample (spawns its own `dotnet test`, so it's slower — kept as a separate step).
+      - name: Test (end-to-end generate pipeline)
+        run: dotnet test tests/Pinion.Tests/Pinion.Tests.csproj -c Release --no-build --filter "Category=EndToEnd"
