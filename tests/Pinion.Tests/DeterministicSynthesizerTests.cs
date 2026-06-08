@@ -46,7 +46,7 @@ public class DeterministicSynthesizerTests
         Assert.Contains(", 10, ", source);     // line.Quantity >= 10 tier
         Assert.Contains("\"CLEARANCE\"", source);
         // And it's a Verify characterization test with no hand-written expected values.
-        Assert.Contains("await Verify(entries)", source);
+        Assert.Contains("await Verify(entries, settings)", source);
         Assert.DoesNotContain("Assert.Equal", source);
     }
 
@@ -170,6 +170,17 @@ public class DeterministicSynthesizerTests
         string src = Synth("Render");
         Assert.Contains("var sut = global::LegacyShop.Formatter.Default;", src);
         Assert.DoesNotContain("default(global::LegacyShop.Formatter)", src);
+    }
+
+    [Fact]
+    public void Snapshot_tolerates_return_types_whose_getters_throw()
+    {
+        // Wrap returns ResultBox, whose Value getter throws on failure. Verify must be told to skip
+        // members that throw, else serializing the result blows up the whole snapshot (the
+        // "snapshot not captured" failure seen on NodaTime's ParseResult<T>).
+        string src = Synth("Wrap");
+        Assert.Contains("settings.IgnoreMembersThatThrow<Exception>();", src);
+        Assert.Contains("await Verify(entries, settings);", src);
     }
 
     [Fact]

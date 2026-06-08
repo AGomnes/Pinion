@@ -244,6 +244,7 @@ internal sealed partial class CSharpDeterministicSynthesizer : IDisposable
         sb.AppendLine("using System;");
         sb.AppendLine("using System.Collections.Generic;");
         sb.AppendLine("using System.Threading.Tasks;");
+        sb.AppendLine("using VerifyTests;");
         sb.AppendLine("using VerifyXunit;");
         sb.AppendLine("using Xunit;");
         sb.AppendLine("using static VerifyXunit.Verifier;");
@@ -295,7 +296,14 @@ internal sealed partial class CSharpDeterministicSynthesizer : IDisposable
             sb.AppendLine();
         }
 
-        sb.AppendLine("        await Verify(entries);");
+        // A captured Outcome may be a result-monad / wrapper whose property getters throw (e.g.
+        // ParseResult<T>.Value throws on a failed parse). The per-row try/catch guards the CALL, but
+        // Verify then serializes the object graph and a throwing getter would blow up the whole
+        // snapshot ("snapshot not captured"). Tell Verify to skip members that throw so the rest of
+        // the real state is still recorded.
+        sb.AppendLine("        var settings = new VerifySettings();");
+        sb.AppendLine("        settings.IgnoreMembersThatThrow<Exception>();");
+        sb.AppendLine("        await Verify(entries, settings);");
         sb.AppendLine("    }");
         sb.AppendLine("}");
         return sb.ToString();

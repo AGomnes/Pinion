@@ -30,6 +30,8 @@ public class HardCases
 
     public int Combine(int a, int b) => a + b;            // overload 1
     public int Combine(int a) => a;                        // overload 2 (same DisplayName)
+
+    public ResultBox Wrap(int n) => new(n >= 0 ? n : (int?)null); // returns a throwing-getter wrapper
 }
 
 /// <summary>
@@ -46,4 +48,18 @@ public sealed class Formatter
     public static Formatter Default { get; } = new("#");
 
     public string Render(int value) => _prefix + value;
+}
+
+/// <summary>
+/// A result-monad wrapper whose <see cref="Value"/> getter THROWS on failure (the
+/// ParseResult&lt;T&gt;/Result&lt;T&gt; shape). Serializing it naively blows up the whole snapshot;
+/// the generated test must configure Verify to skip members that throw so the rest of the real state
+/// (e.g. <see cref="Success"/>) is still recorded.
+/// </summary>
+public sealed class ResultBox
+{
+    private readonly int? _value;
+    public ResultBox(int? value) => _value = value;
+    public bool Success => _value.HasValue;
+    public int Value => _value ?? throw new InvalidOperationException("no value");
 }
