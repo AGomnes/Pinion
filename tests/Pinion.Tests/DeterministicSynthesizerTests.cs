@@ -184,6 +184,16 @@ public class DeterministicSynthesizerTests
     }
 
     [Fact]
+    public void Framework_abstractions_get_a_real_value_not_null()
+    {
+        // ToStringInvariant takes an IFormatProvider; the synthesizer must pass a real culture, not
+        // default(IFormatProvider)! (null), so the method records real formatted behaviour, not an NRE.
+        string src = Synth("ToStringInvariant");
+        Assert.Contains("global::System.Globalization.CultureInfo.InvariantCulture", src);
+        Assert.DoesNotContain("default(global::System.IFormatProvider)", src);
+    }
+
+    [Fact]
     public void Synthesis_is_deterministic()
     {
         string root = RepoRoot();

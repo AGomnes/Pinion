@@ -32,6 +32,11 @@ public class HardCases
     public int Combine(int a) => a;                        // overload 2 (same DisplayName)
 
     public ResultBox Wrap(int n) => new(n >= 0 ? n : (int?)null); // returns a throwing-getter wrapper
+
+    // Takes an IFormatProvider — the dominant real-world "interface param" the synthesizer must fill
+    // with a real culture (not default→null) to capture real formatting behavior.
+    public string ToStringInvariant(decimal amount, System.IFormatProvider provider) =>
+        amount.ToString("C", provider);
 }
 
 /// <summary>

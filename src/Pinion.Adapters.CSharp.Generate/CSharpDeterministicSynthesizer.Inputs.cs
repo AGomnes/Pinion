@@ -145,7 +145,11 @@ internal sealed partial class CSharpDeterministicSynthesizer
                 break;
 
             default:
-                if (t.TypeKind == TypeKind.Enum)
+                if (KnownFrameworkValue(t) is { } fw)
+                {
+                    values.Add(fw); // IFormatProvider→InvariantCulture, IComparer<T>→Comparer<T>.Default, …
+                }
+                else if (t.TypeKind == TypeKind.Enum)
                 {
                     values.AddRange(EnumMembers(t)); // real enum members, not default(0)
                 }
@@ -243,7 +247,8 @@ internal sealed partial class CSharpDeterministicSynthesizer
             case SpecialType.System_Boolean: v.Add("true"); v.Add("false"); break;
             case SpecialType.System_Char: v.Add("'a'"); v.Add("'0'"); break;
             default:
-                if (t.TypeKind == TypeKind.Enum) v.AddRange(EnumMembers(t));
+                if (KnownFrameworkValue(t) is { } fw) v.Add(fw);
+                else if (t.TypeKind == TypeKind.Enum) v.AddRange(EnumMembers(t));
                 else v.Add(BuildValue(t, 1)); // nested object/collection: single, depth-bounded
                 break;
         }
@@ -283,6 +288,41 @@ internal sealed partial class CSharpDeterministicSynthesizer
         var sb = new System.Text.StringBuilder(len);
         while (sb.Length < len) sb.Append("Ab1");
         return sb.ToString()[..len];
+    }
+
+    /// <summary>
+    /// A real, substitutable default for common BCL abstractions, so a method that takes one is
+    /// characterized with actual behaviour instead of a NullReferenceException. Curated and explainable
+    /// — not a guess. The dominant real-world case is <c>IFormatProvider</c> (every culture-aware
+    /// Format/ToString/Parse overload). Returns null for types not in the catalog (fall through to the
+    /// normal construction logic).
+    /// </summary>
+    private static string? KnownFrameworkValue(ITypeSymbol type)
+    {
+        // Generic strategy interfaces → the BCL default comparer for the element type.
+        if (type is INamedTypeSymbol { IsGenericType: true } g && g.TypeArguments.Length == 1)
+        {
+            string arg = g.TypeArguments[0].ToDisplayString(FullyQualified);
+            switch (g.OriginalDefinition.ToDisplayString(FullyQualified))
+            {
+                case "global::System.Collections.Generic.IComparer<T>":
+                    return $"global::System.Collections.Generic.Comparer<{arg}>.Default";
+                case "global::System.Collections.Generic.IEqualityComparer<T>":
+                    return $"global::System.Collections.Generic.EqualityComparer<{arg}>.Default";
+            }
+        }
+
+        return type.ToDisplayString(FullyQualified) switch
+        {
+            "global::System.IFormatProvider" => "global::System.Globalization.CultureInfo.InvariantCulture",
+            "global::System.Globalization.CultureInfo" => "global::System.Globalization.CultureInfo.InvariantCulture",
+            "global::System.TimeZoneInfo" => "global::System.TimeZoneInfo.Utc",
+            "global::System.Threading.CancellationToken" => "global::System.Threading.CancellationToken.None",
+            "global::System.IO.TextWriter" => "global::System.IO.TextWriter.Null",
+            "global::System.IO.TextReader" => "global::System.IO.TextReader.Null",
+            "global::System.IO.Stream" => "global::System.IO.Stream.Null",
+            _ => null,
+        };
     }
 
     private static List<string> EnumMembers(ITypeSymbol enumType) =>
@@ -350,6 +390,11 @@ internal sealed partial class CSharpDeterministicSynthesizer
     private string BuildValue(ITypeSymbol type, int depth)
     {
         type = Unwrap(type);
+
+        // Common BCL abstractions have a real, substitutable default value — use it rather than
+        // default(T)! (null), which would just capture a NullReferenceException. IFormatProvider in
+        // particular dominates real-world `Format`/`ToString`/parse overloads.
+        if (KnownFrameworkValue(type) is { } known) return known;
 
         var first = Unwrap(type).SpecialType switch
         {
