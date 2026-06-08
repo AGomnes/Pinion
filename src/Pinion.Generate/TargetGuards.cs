@@ -15,8 +15,22 @@ public static class TargetGuards
     public static bool IsSideEffecting(CodeUnit unit) =>
         unit.DomainTags.Contains(DomainTag.Io) || unit.DomainTags.Contains(DomainTag.Money);
 
-    /// <summary>True if any exclusion pattern matches the unit's file path, display name, or id.</summary>
-    public static bool IsExcluded(CodeUnit unit, IReadOnlyList<string> patterns)
+    /// <summary>True if any exclusion pattern matches the unit's file path, display name, or id.
+    /// An excluded method is dropped from the run entirely — never run, never sent.</summary>
+    public static bool IsExcluded(CodeUnit unit, IReadOnlyList<string> patterns) => MatchesAny(unit, patterns);
+
+    /// <summary>
+    /// True if any never-send pattern matches the unit's file path, namespace-qualified id, or
+    /// display name. A matched unit's source must NEVER leave the machine: the AI path is refused
+    /// for it (it can still be characterized offline with the deterministic provider). This is the
+    /// security control from the spec — distinct from <see cref="IsExcluded"/>, which removes the
+    /// method from the run; a never-send method is still analyzed and locally characterizable, it
+    /// just may not be sent to a third-party model. Patterns are file globs or namespace prefixes
+    /// (the id is namespace-qualified, e.g. "MyCompany.Secrets.Vault.Decrypt(string)").
+    /// </summary>
+    public static bool IsNeverSend(CodeUnit unit, IReadOnlyList<string> patterns) => MatchesAny(unit, patterns);
+
+    private static bool MatchesAny(CodeUnit unit, IReadOnlyList<string> patterns)
     {
         foreach (var p in patterns)
         {

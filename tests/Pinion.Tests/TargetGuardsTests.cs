@@ -49,4 +49,20 @@ public class TargetGuardsTests
     {
         Assert.False(TargetGuards.IsExcluded(Unit(), System.Array.Empty<string>()));
     }
+
+    [Fact]
+    public void NeverSend_matches_by_namespace_prefix_and_file_glob()
+    {
+        // The id is namespace-qualified, so a namespace prefix matches the id; file globs match the path.
+        var unit = Unit("Vault.Decrypt", "C:/repo/src/Secrets/Vault.cs");
+        Assert.True(TargetGuards.IsNeverSend(unit, new[] { "N.Vault" }));        // namespace-qualified id
+        Assert.True(TargetGuards.IsNeverSend(unit, new[] { "*/Secrets/*" }));    // file glob
+        Assert.False(TargetGuards.IsNeverSend(unit, new[] { "*/Public/*" }));
+    }
+
+    [Fact]
+    public void Empty_patterns_send_everything()
+    {
+        Assert.False(TargetGuards.IsNeverSend(Unit(), System.Array.Empty<string>()));
+    }
 }

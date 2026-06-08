@@ -17,9 +17,11 @@ public sealed class TestGenerator
 
     private readonly UsageMeter? _meter;
     private readonly decimal? _maxSpendUsd;
+    private readonly IReadOnlyList<string> _neverSend;
 
     public TestGenerator(IGenerationAdapter adapter, ILlmClient llm, GenerationOptions? options = null,
-        Action<string>? log = null, UsageMeter? meter = null, decimal? maxSpendUsd = null)
+        Action<string>? log = null, UsageMeter? meter = null, decimal? maxSpendUsd = null,
+        IReadOnlyList<string>? neverSend = null)
     {
         _adapter = adapter;
         _llm = llm;
@@ -27,6 +29,7 @@ public sealed class TestGenerator
         _log = log;
         _meter = meter;
         _maxSpendUsd = maxSpendUsd;
+        _neverSend = neverSend ?? Array.Empty<string>();
     }
 
     /// <summary>True once a spend ceiling is set and cumulative estimated cost has reached it.</summary>
@@ -35,6 +38,18 @@ public sealed class TestGenerator
 
     public async Task<GenerationResult> GenerateAsync(CodeUnit unit, CancellationToken ct)
     {
+        // Never-send gate — the outbound security boundary. Checked BEFORE any context is even
+        // extracted, so a never-send unit's source is never read into an outbound payload, never
+        // previewed by --dry-run, and never sent. This is the authoritative enforcement point:
+        // any caller of the pipeline is bound by it, not just the CLI.
+        if (_neverSend.Count > 0 && TargetGuards.IsNeverSend(unit, _neverSend))
+        {
+            _log?.Invoke($"[no-send] {unit.DisplayName} matches a never-send rule — its source will NOT leave the machine. " +
+                "Refusing the AI path; characterize it offline with --provider deterministic.");
+            return new GenerationResult(unit, Success: false, Attempts: 0, TestFilePath: null, SnapshotPath: null,
+                Diagnostics: new[] { "never-send: source withheld; nothing was sent to the model" });
+        }
+
         var context = await _adapter.ExtractContextAsync(unit, ct).ConfigureAwait(false);
 
         // Scrub everything that would leave the machine. The system prompt is static, but

@@ -72,6 +72,11 @@ internal static class GenerateCommand
             Description = "Exclude methods whose file/name/id matches (substring or glob; repeatable). Also reads .pinionignore.",
             AllowMultipleArgumentsPerToken = true,
         };
+        var noSendOption = new Option<string[]>("--no-send")
+        {
+            Description = "Mark files/namespaces whose source must NEVER be sent to the AI (substring/glob; repeatable). Also reads .pinionnosend. Such methods are still locally characterizable with --provider deterministic.",
+            AllowMultipleArgumentsPerToken = true,
+        };
         var timeoutOption = new Option<int>("--timeout")
         {
             Description = "Per-method test-run timeout in seconds (kills a hung/infinite-loop target).",
@@ -94,7 +99,7 @@ internal static class GenerateCommand
         {
             pathArg, testProjectOption, targetOption, topOption, providerOption,
             modelOption, baseUrlOption, maxRepairsOption, maxSpendOption, maxTargetsOption,
-            allowSideEffectsOption, excludeOption, timeoutOption,
+            allowSideEffectsOption, excludeOption, noSendOption, timeoutOption,
             licenseOption, dryRunOption, verboseOption,
         };
 
@@ -111,6 +116,7 @@ internal static class GenerateCommand
             parse.GetValue(maxTargetsOption),
             parse.GetValue(allowSideEffectsOption),
             parse.GetValue(excludeOption) ?? Array.Empty<string>(),
+            parse.GetValue(noSendOption) ?? Array.Empty<string>(),
             parse.GetValue(timeoutOption),
             parse.GetValue(licenseOption),
             parse.GetValue(dryRunOption),
@@ -123,7 +129,7 @@ internal static class GenerateCommand
     private static async Task<int> RunAsync(
         string path, FileInfo? testProject, string? target, int top,
         string provider, string model, string baseUrl, int maxRepairs,
-        decimal maxSpend, int maxTargets, bool allowSideEffects, string[] exclude, int timeoutSeconds,
+        decimal maxSpend, int maxTargets, bool allowSideEffects, string[] exclude, string[] noSend, int timeoutSeconds,
         string? license, bool dryRun, bool verbose, CancellationToken ct)
     {
         Action<string> log = msg => Console.Error.WriteLine(msg);
@@ -158,7 +164,7 @@ internal static class GenerateCommand
             }
 
             // Exclusions (--exclude + .pinionignore) — these methods are never run and never sent.
-            var exclusions = LoadExclusions(path, exclude);
+            var exclusions = LoadPatterns(path, exclude, ".pinionignore");
             var notExcluded = matched.Where(u => !TargetGuards.IsExcluded(u, exclusions)).ToList();
             if (matched.Count != notExcluded.Count)
                 Console.Error.WriteLine($"Excluded {matched.Count - notExcluded.Count} method(s) by exclude rules.");
@@ -244,8 +250,17 @@ internal static class GenerateCommand
             };
             bool billable = !dryRun && llm is AnthropicClient;
             var meter = new UsageMeter();
+
+            // Never-send (--no-send + .pinionnosend): source for these files/namespaces must not
+            // leave the machine. Enforced authoritatively inside TestGenerator (before any send or
+            // dry-run preview); surfaced here so the user sees the guarantee up front.
+            var neverSend = LoadPatterns(path, noSend, ".pinionnosend");
+            int withheld = neverSend.Count == 0 ? 0 : targets.Count(u => TargetGuards.IsNeverSend(u, neverSend));
+            if (withheld > 0)
+                Console.Error.WriteLine($"Never-send: {withheld} of {targets.Count} target(s) match a no-send rule — their source will not be sent to {llm.Name}; the AI path is refused for them (characterize offline with --provider deterministic).");
+
             var generator = new TestGenerator(genAdapter, llm, options, log,
-                meter, maxSpendUsd: billable ? maxSpend : null);
+                meter, maxSpendUsd: billable ? maxSpend : null, neverSend: neverSend);
 
             if (billable)
                 Console.Error.WriteLine($"Characterizing up to {targets.Count} method(s) via {llm.Name} ({model}), " +
@@ -346,7 +361,10 @@ internal static class GenerateCommand
         return ok == targets.Count ? 0 : 1;
     }
 
-    private static List<string> LoadExclusions(string path, string[] cli)
+    /// <summary>Collect glob/substring patterns from repeatable CLI args plus a dotfile (e.g.
+    /// <c>.pinionignore</c> for exclusions, <c>.pinionnosend</c> for never-send) next to the target
+    /// and in the working directory. Blank lines and <c>#</c> comments are ignored.</summary>
+    private static List<string> LoadPatterns(string path, string[] cli, string fileName)
     {
         var patterns = new List<string>();
         foreach (var e in cli)
@@ -356,7 +374,7 @@ internal static class GenerateCommand
             : Directory.Exists(path) ? Path.GetFullPath(path)
             : Directory.GetCurrentDirectory();
 
-        foreach (var file in new[] { Path.Combine(root, ".pinionignore"), Path.Combine(Directory.GetCurrentDirectory(), ".pinionignore") })
+        foreach (var file in new[] { Path.Combine(root, fileName), Path.Combine(Directory.GetCurrentDirectory(), fileName) })
         {
             if (!File.Exists(file)) continue;
             foreach (var line in File.ReadAllLines(file))
