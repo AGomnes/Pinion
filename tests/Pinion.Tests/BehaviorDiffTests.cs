@@ -74,4 +74,27 @@ public class BehaviorDiffReportTests
         Assert.Contains("### PriceEngine.ApplyDiscounts", md);
         Assert.Contains("```diff", md);
     }
+
+    [Fact]
+    public void Html_is_self_contained_and_colors_the_diff()
+    {
+        var report = new BehaviorDiffReport("T.csproj", System.DateTimeOffset.Now, new[] { Same("A"), Diff("PriceEngine.ApplyDiscounts") });
+        string html = BehaviorDiffRenderer.Html(report);
+
+        Assert.StartsWith("<!DOCTYPE html>", html);
+        Assert.DoesNotContain("src=\"http", html);              // offline — no external scripts/CDN
+        Assert.Contains("<details", html);                       // collapsible per changed method (no JS)
+        Assert.Contains("PriceEngine.ApplyDiscounts", html);
+        Assert.Contains("class=\"del\"", html);                  // − was locked
+        Assert.Contains("class=\"ins\"", html);                  // + current code
+    }
+
+    [Fact]
+    public void Html_shows_a_green_preserved_banner_when_nothing_changed()
+    {
+        var report = new BehaviorDiffReport("T.csproj", System.DateTimeOffset.Now, new[] { Same("A"), Same("B") });
+        string html = BehaviorDiffRenderer.Html(report);
+        Assert.Contains("banner good", html);
+        Assert.Contains("Behavior preserved", html);
+    }
 }

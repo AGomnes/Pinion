@@ -76,16 +76,21 @@ internal static class VerifyCommand
             {
                 OutputFormat.Markdown => BehaviorDiffRenderer.Markdown(report),
                 OutputFormat.Json => BehaviorDiffRenderer.Json(report),
-                OutputFormat.Html => BehaviorDiffRenderer.Markdown(report), // no dedicated HTML yet; Markdown renders cleanly
+                OutputFormat.Html => BehaviorDiffRenderer.Html(report),
                 _ => BehaviorDiffRenderer.Console(report),
             };
-            Console.Out.WriteLine(rendered);
+
+            // The HTML page is a file artifact — printing markup to the console is noise; write it instead.
+            if (format != OutputFormat.Html)
+                Console.Out.WriteLine(rendered);
+            else if (outFile is null)
+                Console.Error.WriteLine("note: pass --out report.html to write the behavior-verification page (HTML is a file artifact).");
 
             if (outFile is not null)
             {
                 outFile.Directory?.Create();
                 await File.WriteAllTextAsync(outFile.FullName, rendered, ct);
-                Console.Error.WriteLine($"Wrote report to {outFile.FullName}");
+                Console.Error.WriteLine($"Wrote {format} report to {outFile.FullName}");
             }
 
             // Exit code = CI gate: 0 only when behavior is fully preserved.

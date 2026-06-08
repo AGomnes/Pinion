@@ -247,9 +247,10 @@ a method whose output still matches its golden master behaves identically; one t
 diff of old vs. new.
 
 ```pwsh
-pinion verify <test.csproj>                       # console report
-pinion verify <test.csproj> --format markdown -o behavior.md   # the shareable proof artifact
-pinion verify <test.csproj> --format json         # for CI tooling
+pinion verify <test.csproj>                                    # console report
+pinion verify <test.csproj> --format markdown -o behavior.md   # shareable proof artifact
+pinion verify <test.csproj> --format html -o behavior.html     # self-contained offline page (green/red diffs)
+pinion verify <test.csproj> --format json                      # for CI tooling
 ```
 
 Example after a migration that altered one method:
