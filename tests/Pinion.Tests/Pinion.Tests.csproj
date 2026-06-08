@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="coverlet.collector" Version="6.0.0" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.8.0" />
+    <PackageReference Include="xunit" Version="2.5.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.5.3" />
+    <PackageReference Include="YamlDotNet" Version="16.2.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Pinion.Engine\Pinion.Engine.csproj" />
+    <ProjectReference Include="..\..\src\Pinion.Adapters.CSharp\Pinion.Adapters.CSharp.csproj" />
+    <ProjectReference Include="..\..\src\Pinion.Generate\Pinion.Generate.csproj" />
+    <ProjectReference Include="..\..\src\Pinion.Adapters.CSharp.Generate\Pinion.Adapters.CSharp.Generate.csproj" />
+    <ProjectReference Include="..\..\tools\Pinion.LicenseAdmin\Pinion.LicenseAdmin.csproj" />
+  </ItemGroup>
+
+</Project>

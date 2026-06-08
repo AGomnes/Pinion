@@ -1,0 +1,44 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
+    <AssemblyName>pinion</AssemblyName>
+    <RootNamespace>Pinion.Cli</RootNamespace>
+
+    <!-- Global tool packaging: `dotnet tool install -g Pinion` → `pinion ...` -->
+    <PackAsTool>true</PackAsTool>
+    <ToolCommandName>pinion</ToolCommandName>
+    <PackageId>Pinion</PackageId>
+    <Version>0.1.0</Version>
+    <Authors>Pinion</Authors>
+    <Description>Characterization-test generator for legacy .NET. Change everything, break nothing, prove it. Free `analyze` audit; deterministic `generate`; `prove` (mutation score), `ci`, and an offline HTML dashboard.</Description>
+    <PackageTags>characterization-tests;pinning-tests;legacy;migration;roslyn;mutation-testing;dotnet-tool;golden-master</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <!-- License/publish destination (public NuGet vs private feed) is a business decision — see memory.
+         Left unset deliberately; set PackageLicenseExpression/File before publishing. -->
+    <SuppressDependenciesWhenPacking>false</SuppressDependenciesWhenPacking>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="..\..\README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Free tier -->
+    <ProjectReference Include="..\Pinion.Engine\Pinion.Engine.csproj" />
+    <ProjectReference Include="..\Pinion.Adapters.CSharp\Pinion.Adapters.CSharp.csproj" />
+    <!-- Paid tier (the CLI is the composition root that bundles both) -->
+    <ProjectReference Include="..\Pinion.Generate\Pinion.Generate.csproj" />
+    <ProjectReference Include="..\Pinion.Adapters.CSharp.Generate\Pinion.Adapters.CSharp.Generate.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Build.Locator" Version="1.11.2" />
+    <PackageReference Include="System.CommandLine" Version="2.0.8" />
+    <!-- MSBuild assemblies must come from the SDK that MSBuildLocator registers at
+         runtime, never copied locally. Reference for compile only. -->
+    <PackageReference Include="Microsoft.Build.Framework" Version="17.11.48" ExcludeAssets="runtime" PrivateAssets="all" />
+  </ItemGroup>
+
+</Project>

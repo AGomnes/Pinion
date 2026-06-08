@@ -1,0 +1,14 @@
+<Project>
+  <!-- Shared settings for every project in the Pinion solution. -->
+  <PropertyGroup>
+    <LangVersion>latest</LangVersion>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+
+    <!-- Dev machines here have the .NET 9/10 runtimes but not .NET 8. We target
+         net8.0 (the migration audience's destination) and roll forward so the
+         tool runs on whatever current runtime is installed. -->
+    <RollForward>Major</RollForward>
+  </PropertyGroup>
+</Project>

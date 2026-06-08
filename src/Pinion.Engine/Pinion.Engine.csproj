@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!-- net8.0 is the shipping target (the migration audience's destination);
+         net10.0 lets the tool build/run on dev boxes that only have the .NET 10 SDK. -->
+    <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Vendored Alpine.js (MIT), inlined into the offline HTML report so it makes no network request. -->
+    <EmbeddedResource Include="Reporting/Assets/alpine.min.js" />
+  </ItemGroup>
+
+</Project>

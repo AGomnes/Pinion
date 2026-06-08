@@ -1,0 +1,67 @@
+using Pinion.Generate;
+using Xunit;
+
+namespace Pinion.Tests;
+
+public class AnthropicClientTests
+{
+    [Fact]
+    public void Request_json_caches_the_system_prefix_and_carries_model_and_messages()
+    {
+        var req = new LlmRequest("claude-sonnet-4-6", "SYS", new[] { LlmMessage.User("hello") }, 4096);
+        string json = AnthropicClient.BuildRequestJson(req);
+
+        Assert.Contains("\"model\":\"claude-sonnet-4-6\"", json);
+        Assert.Contains("\"max_tokens\":4096", json);
+        Assert.Contains("\"cache_control\":{\"type\":\"ephemeral\"}", json); // stable prefix is cached
+        Assert.Contains("\"role\":\"user\"", json);
+        Assert.Contains("hello", json);
+    }
+
+    [Fact]
+    public void Parse_concatenates_text_blocks_and_reads_usage()
+    {
+        // A representative Messages API response body.
+        const string body = """
+        {
+          "id": "msg_1",
+          "type": "message",
+          "role": "assistant",
+          "content": [
+            {"type": "text", "text": "using System;"},
+            {"type": "text", "text": " class X {}"}
+          ],
+          "usage": {"input_tokens": 12, "output_tokens": 34, "cache_read_input_tokens": 8}
+        }
+        """;
+
+        var resp = AnthropicClient.Parse(body);
+
+        Assert.Equal("using System; class X {}", resp.Text);
+        Assert.Equal(12, resp.Usage.InputTokens);
+        Assert.Equal(34, resp.Usage.OutputTokens);
+        Assert.Equal(8, resp.Usage.CacheReadInputTokens);
+    }
+}
+
+public class ExtractCodeTests
+{
+    [Fact]
+    public void Prefers_fenced_block()
+    {
+        Assert.Equal("class X {}", TestGenerator.ExtractCode("Sure:\n```csharp\nclass X {}\n```\nEnjoy."));
+    }
+
+    [Fact]
+    public void Strips_leading_prose_when_unfenced()
+    {
+        string reply = "Here is the characterization test:\n\nusing Xunit;\nclass T {}";
+        Assert.Equal("using Xunit;\nclass T {}", TestGenerator.ExtractCode(reply));
+    }
+
+    [Fact]
+    public void Returns_pure_code_unchanged()
+    {
+        Assert.Equal("namespace N;", TestGenerator.ExtractCode("  namespace N;  "));
+    }
+}

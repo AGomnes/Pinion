@@ -1,0 +1,8 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/LegacyShop/LegacyShop.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/LegacyShop.Tests/LegacyShop.Tests.csproj" />
+  </Folder>
+</Solution>

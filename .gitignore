@@ -1,0 +1,31 @@
+## .NET build output
+bin/
+obj/
+out/
+artifacts/
+.tooltest/
+[Dd]ebug/
+[Rr]elease/
+*.user
+
+## Tooling
+.vs/
+.idea/
+*.log
+
+## Generated characterization tests in the bundled sample (reproducible via `pinion generate`)
+samples/**/PinionCharacterization/
+
+## Generated HTML dashboards (reproducible via `pinion analyze --format html`)
+pinion-dashboard.html
+*.report.html
+
+## Licensing — never commit the private signing key or issued licenses
+tools/pinion-signing-key.txt
+*.license
+
+## Test / coverage / mutation
+TestResults/
+coverage.*
+*.trx
+StrykerOutput/

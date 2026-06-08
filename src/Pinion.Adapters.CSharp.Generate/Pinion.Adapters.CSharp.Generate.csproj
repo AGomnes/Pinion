@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- PAID tier (C# generate adapter). Depends on the free adapter + paid engine. -->
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="CsCheck" Version="4.7.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Pinion.Engine\Pinion.Engine.csproj" />
+    <ProjectReference Include="..\Pinion.Generate\Pinion.Generate.csproj" />
+    <ProjectReference Include="..\Pinion.Adapters.CSharp\Pinion.Adapters.CSharp.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Pinion.Tests" />
+  </ItemGroup>
+
+</Project>

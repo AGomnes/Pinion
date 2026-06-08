@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- PAID tier (the `generate` AI engine). Depends on the free engine only — the
+       dependency flows paid → free, never the reverse. -->
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Pinion.Engine\Pinion.Engine.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Pinion.Tests" />
+    <!-- The vendor-only minting tool needs the internal token format; the shipped
+         product does not contain any issuance code. -->
+    <InternalsVisibleTo Include="pinion-license-admin" />
+  </ItemGroup>
+
+</Project>

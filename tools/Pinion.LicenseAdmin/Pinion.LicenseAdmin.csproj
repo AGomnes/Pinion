@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- VENDOR-ONLY tool. NOT part of the shipped product — it mints licenses and so must
+       never reach customer machines. Kept out of the Pinion solution on purpose. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AssemblyName>pinion-license-admin</AssemblyName>
+    <RootNamespace>Pinion.LicenseAdmin</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Pinion.Generate\Pinion.Generate.csproj" />
+  </ItemGroup>
+
+</Project>

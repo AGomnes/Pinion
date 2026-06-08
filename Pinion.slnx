@@ -1,0 +1,12 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Pinion.Adapters.CSharp.Generate/Pinion.Adapters.CSharp.Generate.csproj" />
+    <Project Path="src/Pinion.Adapters.CSharp/Pinion.Adapters.CSharp.csproj" />
+    <Project Path="src/Pinion.Cli/Pinion.Cli.csproj" />
+    <Project Path="src/Pinion.Engine/Pinion.Engine.csproj" />
+    <Project Path="src/Pinion.Generate/Pinion.Generate.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Pinion.Tests/Pinion.Tests.csproj" />
+  </Folder>
+</Solution>
