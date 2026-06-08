@@ -129,6 +129,16 @@ internal static class AnalyzeCommand
                 Console.Error.WriteLine($"Wrote {format} report to {outFile.FullName}");
             }
 
+            // Opening a single production .csproj loads it and its dependencies, but NOT the test
+            // project that references it — so coverage reads 0% even when the code is well-tested.
+            // Nudge the user toward the solution so test references actually resolve. (To stderr, so
+            // JSON/Markdown stdout stays clean.)
+            if (report.TestedMethods == 0 && report.ScannedMethods > 0 && !ResolvedToSolution(path))
+                Console.Error.WriteLine(
+                    "note: 0 methods are referenced by tests, so Behavior coverage reads 0%. If this " +
+                    "project's tests live in a separate test project, point Pinion at the .sln/.slnx — " +
+                    "opening a single .csproj loads the project but not its test project.");
+
             return 0;
         }
         catch (OperationCanceledException)
@@ -142,6 +152,22 @@ internal static class AnalyzeCommand
             if (verbose) Console.Error.WriteLine(ex);
             return 1;
         }
+    }
+
+    /// <summary>
+    /// Did the analyzed input resolve to a solution (vs a single project)? Mirrors the adapter's
+    /// input resolution: a directory containing a .sln/.slnx loads the solution; otherwise it's a
+    /// single project and test projects that reference it won't be in the graph.
+    /// </summary>
+    private static bool ResolvedToSolution(string input)
+    {
+        if (File.Exists(input))
+            return input.EndsWith(".sln", StringComparison.OrdinalIgnoreCase)
+                || input.EndsWith(".slnx", StringComparison.OrdinalIgnoreCase);
+        if (Directory.Exists(input))
+            return Directory.EnumerateFiles(input, "*.sln")
+                .Concat(Directory.EnumerateFiles(input, "*.slnx")).Any();
+        return false;
     }
 
     /// <summary>Render the HTML dashboard, overlaying per-file + overall mutation scores when available.</summary>
