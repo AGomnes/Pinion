@@ -321,6 +321,9 @@ internal sealed partial class CSharpDeterministicSynthesizer
             "global::System.IO.TextWriter" => "global::System.IO.TextWriter.Null",
             "global::System.IO.TextReader" => "global::System.IO.TextReader.Null",
             "global::System.IO.Stream" => "global::System.IO.Stream.Null",
+            // Ardalis.GuardClauses — extremely common in real .NET business code; its guard extension
+            // methods take IGuardClause, whose canonical entry-point singleton is `Guard.Against`.
+            "global::Ardalis.GuardClauses.IGuardClause" => "global::Ardalis.GuardClauses.Guard.Against",
             _ => null,
         };
     }
