@@ -219,6 +219,7 @@ difference is where the text comes from.
 | `--max-repairs` | `3` | compile/run repair attempts per target (AI path) |
 | `--allow-side-effects` | off | include `io`/`money`-tagged methods (see safety note below) |
 | `--exclude <pat>` | — | never run/send methods matching (substring or glob; repeatable; also reads `.pinionignore`) |
+| `--no-send <pat>` | — | mark files/namespaces whose source must **never** be sent to the AI (repeatable; also reads `.pinionnosend`). Still locally characterizable with `--provider deterministic` |
 | `--timeout <s>` | `180` | per-method run timeout — kills a hung/infinite-loop target |
 | `--dry-run` | off | print the exact outbound bytes / synthesized test and run nothing |
 
@@ -236,6 +237,45 @@ harmless, but a method that touches the filesystem, a database, the network, or 
 - **Snapshots are scrubbed** — the captured golden master is run through the secret scrubber before
   it's written, since a return value can contain real secrets/PII and the file is committed.
 - Generated files are written only under `<test-project>/PinionCharacterization/` (name-sanitized).
+
+## `verify` — did the migration change any behavior?
+
+This is the payoff. Once `generate` has locked behavior as golden masters, run your migration
+(.NET Framework→Core, a refactor, an AI rewrite — anything), then `pinion verify` re-runs the locked
+suite against the **current** code and tells you exactly what changed. It's *proof*, not a prediction:
+a method whose output still matches its golden master behaves identically; one that doesn't shows a
+diff of old vs. new.
+
+```pwsh
+pinion verify <test.csproj>                       # console report
+pinion verify <test.csproj> --format markdown -o behavior.md   # the shareable proof artifact
+pinion verify <test.csproj> --format json         # for CI tooling
+```
+
+Example after a migration that altered one method:
+
+```
+BEHAVIOR VERIFICATION — MyApp.Tests.csproj
+Re-ran 61 locked method(s) against the current code.
+
+✓ Identical: 60 of 61
+⚠ CHANGED:   1 of 61   (− was locked  ·  + current code)
+
+CHANGED METHODS
+────────────────────────────────────────────────────────────
+1. InvoiceService.CalculateVat
+   {
+     Input: (9999m, "DE", false),
+   - Outcome: 1899.81
+   + Outcome: 1900.00
+   }
+```
+
+- **Exit code is the gate** — `0` only when every locked method behaves identically; non-zero on any
+  change or a build break. Drop it into CI (or use `pinion ci`) and a behavior change fails the build.
+- **Free tier, offline, no AI** — it just runs the committed tests and diffs the snapshots.
+- If the suite no longer compiles, `verify` reports that the **migration broke the build** rather than
+  guessing about behavior.
 
 ## `prove` — do the tests actually catch regressions?
 

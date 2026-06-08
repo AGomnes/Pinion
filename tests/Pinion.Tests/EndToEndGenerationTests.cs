@@ -19,6 +19,7 @@ namespace Pinion.Tests;
 /// (<c>dotnet test --filter "Category!=EndToEnd"</c> to skip).
 /// </summary>
 [Trait("Category", "EndToEnd")]
+[Collection("LegacyShop e2e")]
 public class EndToEndGenerationTests
 {
     private static string RepoRoot()
