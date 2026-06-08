@@ -390,6 +390,132 @@ internal sealed partial class CSharpDeterministicSynthesizer
         return null;
     }
 
+    // ---- Interface stub synthesis ----
+    // For a service interface we can't otherwise fill (IRepository<T>, IWorkContext, …), emit a minimal
+    // class implementing it with trivial members, so the unit-under-test runs with a real no-op
+    // collaborator. The captured behaviour is "behaviour given default collaborators" — a partial but
+    // honest characterization, and far better than an immediate NRE on a null dependency.
+
+    /// <summary>An interface implementable with trivial members and referenceable from the test
+    /// assembly. Skips (→ falls back to default!) anything with generic methods, ref/out params,
+    /// by-ref returns, or static-abstract members — keeping emitted stubs compilable.</summary>
+    private static bool CanStub(INamedTypeSymbol iface)
+    {
+        if (iface.TypeKind != TypeKind.Interface || !IsPubliclyAccessible(iface)) return false;
+        foreach (var m in StubMembers(iface))
+        {
+            switch (m)
+            {
+                case IMethodSymbol { MethodKind: MethodKind.Ordinary, IsAbstract: true } method:
+                    if (method.IsStatic || method.IsGenericMethod
+                        || method.ReturnsByRef || method.ReturnsByRefReadonly) return false;
+                    if (method.Parameters.Any(p => p.RefKind is RefKind.Ref or RefKind.Out or RefKind.RefReadOnly))
+                        return false;
+                    break;
+                case IPropertySymbol { IsAbstract: true } p:
+                    if (p.IsStatic || p.ReturnsByRef || p.ReturnsByRefReadonly) return false;
+                    break;
+                case IEventSymbol { IsAbstract: true, IsStatic: true }:
+                    return false;
+            }
+        }
+        return true;
+    }
+
+    private static bool IsPubliclyAccessible(INamedTypeSymbol t)
+    {
+        for (INamedTypeSymbol? cur = t; cur is not null; cur = cur.ContainingType)
+            if (cur.DeclaredAccessibility != Accessibility.Public) return false;
+        return true;
+    }
+
+    /// <summary>Every member that must be implemented — the interface's own abstract members plus those
+    /// of every interface it inherits.</summary>
+    private static IEnumerable<ISymbol> StubMembers(INamedTypeSymbol iface) =>
+        iface.AllInterfaces.Append(iface).SelectMany(i => i.GetMembers());
+
+    /// <summary>Register a stub class for the interface once and return `new __Stub()`.</summary>
+    private string StubInstance(INamedTypeSymbol iface)
+    {
+        string fq = iface.ToDisplayString(FullyQualified);
+        if (!_stubs.TryGetValue(fq, out var s))
+        {
+            s = ($"__Stub_{SafeId(iface.Name)}_{ShortHash(fq)}", iface);
+            _stubs[fq] = s;
+        }
+        return $"new {s.Name}()";
+    }
+
+    private void EmitStub(System.Text.StringBuilder sb, string name, INamedTypeSymbol iface)
+    {
+        sb.AppendLine($"    private sealed class {name} : {iface.ToDisplayString(FullyQualified)}");
+        sb.AppendLine("    {");
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var m in StubMembers(iface))
+        {
+            if (!seen.Add(m.ToDisplayString())) continue;
+            switch (m)
+            {
+                case IMethodSymbol { MethodKind: MethodKind.Ordinary, IsAbstract: true } method:
+                    string pars = string.Join(", ", method.Parameters.Select(StubParam));
+                    if (method.ReturnsVoid)
+                        sb.AppendLine($"        public void {method.Name}({pars}) {{ }}");
+                    else
+                        sb.AppendLine($"        public {method.ReturnType.ToDisplayString(FullyQualified)} {method.Name}({pars}) => {ValueDefault(method.ReturnType)};");
+                    break;
+                case IPropertySymbol { IsAbstract: true } prop:
+                    EmitStubProperty(sb, prop);
+                    break;
+                case IEventSymbol { IsAbstract: true } ev:
+                    sb.AppendLine($"        public event {ev.Type.ToDisplayString(FullyQualified)} {ev.Name} {{ add {{ }} remove {{ }} }}");
+                    break;
+            }
+        }
+        sb.AppendLine("    }");
+    }
+
+    private static string StubParam(IParameterSymbol p) =>
+        (p.RefKind == RefKind.In ? "in " : "") + p.Type.ToDisplayString(FullyQualified) + " " + p.Name;
+
+    private void EmitStubProperty(System.Text.StringBuilder sb, IPropertySymbol prop)
+    {
+        string t = prop.Type.ToDisplayString(FullyQualified);
+        string getter = prop.GetMethod is not null ? $"get => {ValueDefault(prop.Type)}; " : "";
+        string setter = prop.SetMethod is null ? "" : prop.SetMethod.IsInitOnly ? "init { } " : "set { } ";
+        if (prop.IsIndexer)
+            sb.AppendLine($"        public {t} this[{string.Join(", ", prop.Parameters.Select(StubParam))}] {{ {getter}{setter}}}");
+        else
+            sb.AppendLine($"        public {t} {prop.Name} {{ {getter}{setter}}}");
+    }
+
+    /// <summary>A trivial value expression for a stub member's return/getter — completed tasks, empty
+    /// list-like collections, known framework values, else default!. Never recurses into another stub.</summary>
+    private string ValueDefault(ITypeSymbol t)
+    {
+        if (t is INamedTypeSymbol n)
+        {
+            switch (n.OriginalDefinition.ToDisplayString())
+            {
+                case "System.Threading.Tasks.Task": return "global::System.Threading.Tasks.Task.CompletedTask";
+                case "System.Threading.Tasks.ValueTask": return "default";
+                case "System.Threading.Tasks.Task<TResult>":
+                    return $"global::System.Threading.Tasks.Task.FromResult<{n.TypeArguments[0].ToDisplayString(FullyQualified)}>({ValueDefault(n.TypeArguments[0])})";
+                case "System.Threading.Tasks.ValueTask<TResult>":
+                    return $"new global::System.Threading.Tasks.ValueTask<{n.TypeArguments[0].ToDisplayString(FullyQualified)}>({ValueDefault(n.TypeArguments[0])})";
+            }
+        }
+        if (KnownFrameworkValue(t) is { } k) return k;
+        if (t.TypeKind == TypeKind.Interface && IsListLike(t) && ElementType(t) is { } el)
+            return $"global::System.Array.Empty<{el.ToDisplayString(FullyQualified)}>()";
+        return $"default({t.ToDisplayString(FullyQualified)})!";
+    }
+
+    private static bool IsListLike(ITypeSymbol t) =>
+        t.OriginalDefinition.ToDisplayString() is
+            "System.Collections.Generic.IEnumerable<T>" or "System.Collections.Generic.ICollection<T>"
+            or "System.Collections.Generic.IList<T>" or "System.Collections.Generic.IReadOnlyCollection<T>"
+            or "System.Collections.Generic.IReadOnlyList<T>";
+
     private string BuildValue(ITypeSymbol type, int depth)
     {
         type = Unwrap(type);
@@ -427,6 +553,12 @@ internal sealed partial class CSharpDeterministicSynthesizer
                 return $"new {named.ToDisplayString(FullyQualified)}({string.Join(", ", args)})";
             }
         }
+
+        // Interface dependency we can't otherwise construct (the dominant residue on real DI-heavy
+        // service layers): a minimal stub, so the unit runs with a real no-op collaborator instead of
+        // NREing on a null. Depth-bounded so stubs never nest.
+        if (depth <= 2 && type is INamedTypeSymbol { TypeKind: TypeKind.Interface } iface && CanStub(iface))
+            return StubInstance(iface);
 
         return $"default({type.ToDisplayString(FullyQualified)})!";
     }

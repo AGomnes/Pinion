@@ -39,6 +39,11 @@ internal sealed partial class CSharpDeterministicSynthesizer : IDisposable
     private readonly ConcurrentDictionary<string, Solution> _solutions = new(StringComparer.OrdinalIgnoreCase);
     private readonly List<MSBuildWorkspace> _workspaces = new(); // kept alive while their solutions are in use
 
+    // Stubs the CURRENT Emit needs: interface FQN → (stub class name, the interface). Reset per Emit
+    // (synthesis is sequential within a batch). A method that injects a service interface gets a real
+    // `new __Stub()` collaborator instead of a null that NREs on first use.
+    private readonly Dictionary<string, (string Name, INamedTypeSymbol Iface)> _stubs = new(StringComparer.Ordinal);
+
     public CSharpDeterministicSynthesizer(Action<string>? log = null, bool tryMsBuild = false)
     {
         _log = log;
@@ -221,6 +226,7 @@ internal sealed partial class CSharpDeterministicSynthesizer : IDisposable
 
     private string Emit(CodeUnit unit, Resolved r, Mined mined)
     {
+        _stubs.Clear(); // stubs are per-test; populated as args/receiver are built below
         IMethodSymbol method = r.Method;
         string type = method.ContainingType.ToDisplayString(FullyQualified);
         string methodName = method.Name;
@@ -305,6 +311,14 @@ internal sealed partial class CSharpDeterministicSynthesizer : IDisposable
         sb.AppendLine("        settings.IgnoreMembersThatThrow<Exception>();");
         sb.AppendLine("        await Verify(entries, settings);");
         sb.AppendLine("    }");
+
+        // Minimal nested stub classes for any interface dependency we filled with `new __Stub()`.
+        foreach (var (name, iface) in _stubs.Values.OrderBy(s => s.Name, StringComparer.Ordinal))
+        {
+            sb.AppendLine();
+            EmitStub(sb, name, iface);
+        }
+
         sb.AppendLine("}");
         return sb.ToString();
     }

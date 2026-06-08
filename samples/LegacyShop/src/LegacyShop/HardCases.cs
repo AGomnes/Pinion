@@ -39,6 +39,24 @@ public class HardCases
         amount.ToString("C", provider);
 }
 
+/// <summary>A service interface with no construction path — the DI-heavy-service case the synthesizer
+/// must fill with a generated stub (not null), so PriceQuoter below runs instead of NREing.</summary>
+public interface IRate
+{
+    decimal Multiplier { get; }
+    System.Threading.Tasks.Task<decimal> LookupAsync(string sku);
+}
+
+/// <summary>Constructor-injects IRate — like a real service. With a stub for IRate, Quote() runs with a
+/// no-op collaborator (Multiplier defaults to 0) and records real behavior rather than a null-ref.</summary>
+public sealed class PriceQuoter
+{
+    private readonly IRate _rate;
+    public PriceQuoter(IRate rate) => _rate = rate;
+
+    public decimal Quote(decimal basePrice) => basePrice * (1 + _rate.Multiplier);
+}
+
 /// <summary>
 /// A façade type obtained via a static factory, not <c>new</c> — the dominant real-world shape
 /// (NodaTime's <c>LocalDatePattern.Iso</c>, <c>DateTimeZone.Utc</c>). With a private ctor the

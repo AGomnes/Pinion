@@ -194,6 +194,18 @@ public class DeterministicSynthesizerTests
     }
 
     [Fact]
+    public void Service_interface_dependency_is_stubbed_not_null()
+    {
+        // PriceQuoter injects IRate (a service interface with no construction path). The synthesizer
+        // must build a stub implementing it, so Quote() runs with a no-op collaborator and records real
+        // behaviour — instead of `new PriceQuoter(default(IRate)!)` which NREs on first use.
+        string src = Synth("Quote");
+        Assert.Contains("new __Stub_IRate", src);                       // receiver gets a stubbed collaborator
+        Assert.Contains("private sealed class __Stub_IRate", src);      // the stub class is emitted inline
+        Assert.DoesNotContain("default(global::LegacyShop.IRate)", src); // not null-injected
+    }
+
+    [Fact]
     public void Synthesis_is_deterministic()
     {
         string root = RepoRoot();
