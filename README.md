@@ -423,5 +423,5 @@ tests/Pinion.Tests                 engine + complexity + tagger + landmine + gen
 samples/LegacyShop           a deliberately under-tested sample (risk + blast radius + coverage)
 samples/LegacyWeb            legacy WebForms/WCF/EF6 fixtures (landmine detection)
 samples/LegacyFramework      classic non-SDK v4.8 .csproj (source-scan fallback)
-BEHAVIORLOCK_SPEC.md         the source-of-truth build brief
+PINION_SPEC.md               the source-of-truth build brief
 ```

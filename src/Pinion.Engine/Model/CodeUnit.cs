@@ -38,7 +38,18 @@ public sealed record CodeUnit(
     IReadOnlyList<string> DomainTags,
     bool HasTests,
     bool IsPublicEntryPoint,
-    IReadOnlyList<string> MigrationLandmines);
+    IReadOnlyList<string> MigrationLandmines)
+{
+    /// <summary>The bare member name — <see cref="DisplayName"/> after the last '.'.</summary>
+    public string SimpleName
+    {
+        get
+        {
+            int dot = DisplayName.LastIndexOf('.');
+            return dot >= 0 ? DisplayName[(dot + 1)..] : DisplayName;
+        }
+    }
+}
 
 /// <summary>A single parameter of a <see cref="CodeUnit"/>.</summary>
 public sealed record ParamInfo(string Name, string Type);

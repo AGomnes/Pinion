@@ -9,11 +9,14 @@ using Pinion.Generate;
 namespace Pinion.Adapters.CSharp.Generate;
 
 /// <summary>The C# implementation of the paid <see cref="IGenerationAdapter"/> surface.</summary>
-public sealed class CSharpTestGenerator : IGenerationAdapter
+public sealed class CSharpTestGenerator : IGenerationAdapter, IDisposable
 {
     private string? _testProjectPath;
     private string _generatedSubdir = "PinionCharacterization";
     private CSharpDeterministicSynthesizer? _synth;
+
+    /// <summary>Dispose the synthesizer (and its MSBuild workspaces).</summary>
+    public void Dispose() => _synth?.Dispose();
 
     /// <summary>Hard timeout for each `dotnet test` invocation (kills a hung/infinite-loop run).</summary>
     public int RunTimeoutSeconds { get; set; } = 180;
@@ -41,7 +44,7 @@ public sealed class CSharpTestGenerator : IGenerationAdapter
     /// <summary>The default, AI-free path: synthesize a test from the semantic model, then compile + run + snapshot.</summary>
     public async Task<GenerationResult> GenerateDeterministicAsync(CodeUnit unit, string sourceRoot, CancellationToken ct)
     {
-        string source = Synth.Synthesize(unit, sourceRoot, ct);
+        string source = await Synth.SynthesizeAsync(unit, sourceRoot, ct).ConfigureAwait(false);
         var emitted = await EmitTestAsync(unit, source, ct).ConfigureAwait(false);
         var exec = await RunAndSnapshotAsync(emitted, ct).ConfigureAwait(false);
         return new GenerationResult(unit, exec.Compiled && exec.Passed, Attempts: 1,
@@ -75,7 +78,7 @@ public sealed class CSharpTestGenerator : IGenerationAdapter
         {
             try
             {
-                string src = Synth.Synthesize(unit, sourceRoot, ct);
+                string src = await Synth.SynthesizeAsync(unit, sourceRoot, ct).ConfigureAwait(false);
                 active.Add((unit, await EmitTestAsync(unit, src, ct).ConfigureAwait(false)));
             }
             catch (Exception ex)

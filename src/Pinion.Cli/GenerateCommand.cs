@@ -191,7 +191,8 @@ internal static class GenerateCommand
 
             // The paid generate adapter (separate from the free analyze adapter above).
             // Resolve full references via MSBuild only when it actually registered at startup.
-            var genAdapter = new CSharpTestGenerator
+            // `using` so its synthesizer's MSBuild workspaces are disposed when the command ends.
+            using var genAdapter = new CSharpTestGenerator
             {
                 RunTimeoutSeconds = timeoutSeconds,
                 ResolveReferences = Microsoft.Build.Locator.MSBuildLocator.IsRegistered,

@@ -4,7 +4,8 @@
     <LangVersion>latest</LangVersion>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <!-- The build is warning-clean; keep it that way (catches regressions in CI and locally). -->
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
 
     <!-- Dev machines here have the .NET 9/10 runtimes but not .NET 8. We target
          net8.0 (the migration audience's destination) and roll forward so the

@@ -1,0 +1,26 @@
+# Pinion's own CI — build the multi-targeted solution and run the test suite on every push/PR.
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up .NET (8 + 10)
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            8.0.x
+            10.0.x
+
+      - name: Build (Release, all projects)
+        run: dotnet build Pinion.slnx -c Release
+
+      - name: Test
+        run: dotnet test tests/Pinion.Tests/Pinion.Tests.csproj -c Release --no-build

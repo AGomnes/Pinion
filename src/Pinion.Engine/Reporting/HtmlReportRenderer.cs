@@ -145,8 +145,7 @@ public static class HtmlReportRenderer
         {
             string file = Path.GetFileName(h.Unit.FilePath);
             double? score = fileScores is not null && fileScores.TryGetValue(file, out var s) ? Math.Round(s) : null;
-            int dot = h.Unit.DisplayName.LastIndexOf('.');
-            string method = dot >= 0 ? h.Unit.DisplayName[(dot + 1)..] : h.Unit.DisplayName;
+            string method = h.Unit.SimpleName;
             return new
             {
                 id = h.Unit.Id,
@@ -201,14 +200,17 @@ public static class HtmlReportRenderer
 
     private static string Enc(string s) => WebUtility.HtmlEncode(s);
 
-    private static string AlpineJs()
+    // Read the embedded Alpine.js once, not on every Render.
+    private static readonly Lazy<string> AlpineSource = new(() =>
     {
         var asm = typeof(HtmlReportRenderer).Assembly;
         string name = asm.GetManifestResourceNames().First(n => n.EndsWith("alpine.min.js", StringComparison.Ordinal));
         using var stream = asm.GetManifestResourceStream(name)!;
         using var reader = new StreamReader(stream);
         return reader.ReadToEnd();
-    }
+    });
+
+    private static string AlpineJs() => AlpineSource.Value;
 
     private const string DashboardJs = """
         function dashboard() {
