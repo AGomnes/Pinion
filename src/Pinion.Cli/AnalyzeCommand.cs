@@ -52,6 +52,11 @@ internal static class AnalyzeCommand
             Description = "Overlay per-file mutation scores in the HTML report (JSON from `prove --report-json`).",
         };
 
+        var openOption = new Option<bool>("--open")
+        {
+            Description = "Open the rendered report in the default browser (a static file — no server is started).",
+        };
+
         var verboseOption = new Option<bool>("--verbose", "-v")
         {
             Description = "Print Roslyn/MSBuild diagnostics to stderr.",
@@ -59,7 +64,7 @@ internal static class AnalyzeCommand
 
         var cmd = new Command("analyze", "Scan a codebase and produce a Migration Readiness Report.")
         {
-            pathArg, formatOption, outOption, topOption, thresholdOption, coverageOption, mutationReportOption, verboseOption,
+            pathArg, formatOption, outOption, topOption, thresholdOption, coverageOption, mutationReportOption, openOption, verboseOption,
         };
 
         cmd.SetAction(async (parse, ct) =>
@@ -71,9 +76,10 @@ internal static class AnalyzeCommand
             double threshold = parse.GetValue(thresholdOption);
             bool coverage = parse.GetValue(coverageOption);
             var mutationReport = parse.GetValue(mutationReportOption);
+            bool open = parse.GetValue(openOption);
             bool verbose = parse.GetValue(verboseOption);
 
-            return await RunAsync(path, format, outFile, top, threshold, coverage, mutationReport, verbose, ct);
+            return await RunAsync(path, format, outFile, top, threshold, coverage, mutationReport, open, verbose, ct);
         });
 
         return cmd;
@@ -81,7 +87,7 @@ internal static class AnalyzeCommand
 
     private static async Task<int> RunAsync(
         string path, OutputFormat format, FileInfo? outFile,
-        int top, double threshold, bool collectCoverage, FileInfo? mutationReport, bool verbose, CancellationToken ct)
+        int top, double threshold, bool collectCoverage, FileInfo? mutationReport, bool open, bool verbose, CancellationToken ct)
     {
         Action<string>? log = verbose ? msg => Console.Error.WriteLine(msg) : null;
 
@@ -119,8 +125,8 @@ internal static class AnalyzeCommand
             // The HTML dashboard is a file artifact — printing it to the console is noise; write it instead.
             if (format != OutputFormat.Html)
                 Console.Out.WriteLine(rendered);
-            else if (outFile is null)
-                Console.Error.WriteLine("note: pass --out report.html to write the dashboard (HTML is a file artifact).");
+            else if (outFile is null && !open)
+                Console.Error.WriteLine("note: pass --out report.html (or --open) to view the dashboard (HTML is a file artifact).");
 
             if (outFile is not null)
             {
@@ -128,6 +134,8 @@ internal static class AnalyzeCommand
                 await File.WriteAllTextAsync(outFile.FullName, rendered, ct);
                 Console.Error.WriteLine($"Wrote {format} report to {outFile.FullName}");
             }
+
+            if (open) await ReportOutput.OpenAsync(rendered, format, outFile, "pinion-analyze", ct);
 
             // Opening a single production .csproj loads it and its dependencies, but NOT the test
             // project that references it — so coverage reads 0% even when the code is well-tested.

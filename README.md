@@ -398,9 +398,14 @@ real moat is the hosted service, updates, and support.
 
 **Security (the sales pitch):** code stays local; the only thing that ever leaves is per-method
 context, through a **single, auditable** HTTP call to one endpoint. A pre-send scrubber strips
-keys/passwords/tokens/connection-string credentials; `--dry-run` shows the literal payload; no
-telemetry. Use Anthropic Zero-Data-Retention (an org-level account setting), or `--base-url` to
-run fully offline against a local model.
+keys/passwords/tokens/connection-string credentials; a never-send allowlist (`--no-send` /
+`.pinionnosend`) keeps designated files/namespaces fully offline; `--dry-run` shows the literal
+payload; no telemetry. Use Anthropic Zero-Data-Retention (an org-level account setting), or
+`--base-url` to run fully offline against a local model.
+
+📄 **Full, code-accurate data-handling statement: [TRUST.md](TRUST.md)** — what does and doesn't
+leave the machine per command, how to audit the single outbound call yourself, air-gapped mode, and a
+[DPA template](docs/DPA-template.md) for service engagements.
 
 ### API-key handling & cost controls
 

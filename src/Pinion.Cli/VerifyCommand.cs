@@ -36,11 +36,15 @@ internal static class VerifyCommand
             Description = "Hard timeout (seconds) for the whole test run.",
             DefaultValueFactory = _ => 600,
         };
+        var openOption = new Option<bool>("--open")
+        {
+            Description = "Open the rendered report in the default browser (a static file — no server is started).",
+        };
         var verboseOption = new Option<bool>("--verbose", "-v") { Description = "Print diagnostics to stderr." };
 
         var cmd = new Command("verify", "Re-run the locked behavior against current code and report what changed (CI gate).")
         {
-            projectArg, formatOption, outOption, subdirOption, timeoutOption, verboseOption,
+            projectArg, formatOption, outOption, subdirOption, timeoutOption, openOption, verboseOption,
         };
 
         cmd.SetAction(async (parse, ct) => await RunAsync(
@@ -49,6 +53,7 @@ internal static class VerifyCommand
             parse.GetValue(outOption),
             parse.GetValue(subdirOption)!,
             parse.GetValue(timeoutOption),
+            parse.GetValue(openOption),
             parse.GetValue(verboseOption),
             ct));
 
@@ -56,7 +61,7 @@ internal static class VerifyCommand
     }
 
     private static async Task<int> RunAsync(
-        string testProject, OutputFormat format, FileInfo? outFile, string subdir, int timeout, bool verbose, CancellationToken ct)
+        string testProject, OutputFormat format, FileInfo? outFile, string subdir, int timeout, bool open, bool verbose, CancellationToken ct)
     {
         Action<string>? vlog = verbose ? msg => Console.Error.WriteLine(msg) : null;
 
@@ -83,8 +88,8 @@ internal static class VerifyCommand
             // The HTML page is a file artifact — printing markup to the console is noise; write it instead.
             if (format != OutputFormat.Html)
                 Console.Out.WriteLine(rendered);
-            else if (outFile is null)
-                Console.Error.WriteLine("note: pass --out report.html to write the behavior-verification page (HTML is a file artifact).");
+            else if (outFile is null && !open)
+                Console.Error.WriteLine("note: pass --out report.html (or --open) to view the behavior-verification page (HTML is a file artifact).");
 
             if (outFile is not null)
             {
@@ -92,6 +97,8 @@ internal static class VerifyCommand
                 await File.WriteAllTextAsync(outFile.FullName, rendered, ct);
                 Console.Error.WriteLine($"Wrote {format} report to {outFile.FullName}");
             }
+
+            if (open) await ReportOutput.OpenAsync(rendered, format, outFile, "pinion-verify", ct);
 
             // Exit code = CI gate: 0 only when behavior is fully preserved.
             if (report.BuildFailed) return 1;
