@@ -31,3 +31,19 @@ public class HardCases
     public int Combine(int a, int b) => a + b;            // overload 1
     public int Combine(int a) => a;                        // overload 2 (same DisplayName)
 }
+
+/// <summary>
+/// A façade type obtained via a static factory, not <c>new</c> — the dominant real-world shape
+/// (NodaTime's <c>LocalDatePattern.Iso</c>, <c>DateTimeZone.Utc</c>). With a private ctor the
+/// generator must recover a receiver from the static property; otherwise it would emit
+/// <c>default(Formatter)!</c> (null) and capture only a NullReferenceException.
+/// </summary>
+public sealed class Formatter
+{
+    private readonly string _prefix;
+    private Formatter(string prefix) => _prefix = prefix;
+
+    public static Formatter Default { get; } = new("#");
+
+    public string Render(int value) => _prefix + value;
+}

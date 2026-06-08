@@ -297,9 +297,54 @@ internal sealed partial class CSharpDeterministicSynthesizer
     {
         string fq = type.ToDisplayString(FullyQualified);
         var ctor = AccessibleCtor(type);
-        if (ctor is null) return $"default({fq})!";
-        var args = ctor.Parameters.Select(p => BuildValue(p.Type, 1));
-        return $"new {fq}({string.Join(", ", args)})";
+        if (ctor is not null)
+        {
+            var args = ctor.Parameters.Select(p => BuildValue(p.Type, 1));
+            return $"new {fq}({string.Join(", ", args)})";
+        }
+
+        // No public constructor — the idiomatic real-world case for value/façade types (NodaTime's
+        // `LocalDatePattern.Iso`, `DateTimeZone.Utc`, `TzdbDateTimeZoneSource.Default`) that hide their
+        // ctor behind a static factory. Without this the receiver is `default!` (null) and every captured
+        // outcome is just a NullReferenceException — locking in nothing. Recover a real instance from a
+        // public static factory member instead.
+        return StaticFactory(type) ?? $"default({fq})!";
+    }
+
+    /// <summary>
+    /// A public static member on <paramref name="type"/> that yields an instance of it. Deterministic:
+    /// candidates are sorted by name and the cleanest source is preferred — a parameterless property
+    /// (e.g. <c>.Iso</c>, <c>.Utc</c>), then a static field singleton, then a parameterless factory
+    /// method. Parameterless only, so the receiver expression itself can't throw on synthetic arguments
+    /// (it runs outside the per-row try/catch).
+    /// </summary>
+    private static string? StaticFactory(INamedTypeSymbol type)
+    {
+        string fq = type.ToDisplayString(FullyQualified);
+        bool Yields(ITypeSymbol t) => SymbolEqualityComparer.Default.Equals(t, type);
+
+        var prop = type.GetMembers().OfType<IPropertySymbol>()
+            .Where(p => p.IsStatic && !p.IsIndexer && p.DeclaredAccessibility == Accessibility.Public
+                        && p.GetMethod is { DeclaredAccessibility: Accessibility.Public } && Yields(p.Type))
+            .OrderBy(p => p.Name, StringComparer.Ordinal)
+            .FirstOrDefault();
+        if (prop is not null) return $"{fq}.{prop.Name}";
+
+        var field = type.GetMembers().OfType<IFieldSymbol>()
+            .Where(f => f.IsStatic && f.DeclaredAccessibility == Accessibility.Public && Yields(f.Type))
+            .OrderBy(f => f.Name, StringComparer.Ordinal)
+            .FirstOrDefault();
+        if (field is not null) return $"{fq}.{field.Name}";
+
+        var method = type.GetMembers().OfType<IMethodSymbol>()
+            .Where(m => m.IsStatic && m.MethodKind == MethodKind.Ordinary
+                        && m.DeclaredAccessibility == Accessibility.Public
+                        && !m.IsGenericMethod && m.Parameters.IsEmpty && Yields(m.ReturnType))
+            .OrderBy(m => m.Name, StringComparer.Ordinal)
+            .FirstOrDefault();
+        if (method is not null) return $"{fq}.{method.Name}()";
+
+        return null;
     }
 
     private string BuildValue(ITypeSymbol type, int depth)

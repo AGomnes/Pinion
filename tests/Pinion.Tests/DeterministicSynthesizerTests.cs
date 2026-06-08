@@ -162,6 +162,17 @@ public class DeterministicSynthesizerTests
     }
 
     [Fact]
+    public void Static_factory_recovers_a_real_receiver_for_private_ctor_types()
+    {
+        // Formatter has a private ctor and is obtained via `Formatter.Default` (the NodaTime shape).
+        // The generator must use that static factory as the receiver, not `default(Formatter)!` (null,
+        // which would capture only a NullReferenceException and lock in nothing).
+        string src = Synth("Render");
+        Assert.Contains("var sut = global::LegacyShop.Formatter.Default;", src);
+        Assert.DoesNotContain("default(global::LegacyShop.Formatter)", src);
+    }
+
+    [Fact]
     public void Synthesis_is_deterministic()
     {
         string root = RepoRoot();
