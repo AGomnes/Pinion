@@ -47,6 +47,12 @@ public static class ReportBuilder
         int highRiskUnprotected = scored.Count(s =>
             !s.Unit.HasTests && s.Score.Total >= options.HighRiskThreshold);
 
+        // Of the high-risk, unprotected units, how many hard-wire their dependencies and so need a
+        // seam introduced before they can be locked — the testability friction in the migration.
+        int seamsToIntroduce = scored.Count(s =>
+            !s.Unit.HasTests && s.Score.Total >= options.HighRiskThreshold
+            && s.Unit.Seamability == Seamability.NeedsSeam);
+
         var landmineCounts = units
             .SelectMany(u => u.MigrationLandmines)
             .GroupBy(l => l, StringComparer.OrdinalIgnoreCase)
@@ -67,6 +73,7 @@ public static class ReportBuilder
             LandmineCounts: landmineCounts,
             Hotspots: hotspots,
             Weights: options.Weights,
-            Coverage: coverage);
+            Coverage: coverage,
+            SeamsToIntroduce: seamsToIntroduce);
     }
 }

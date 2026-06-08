@@ -1,6 +1,7 @@
 using System.IO;
 using System.Text;
 using Pinion.Engine.Analysis;
+using Pinion.Engine.Model;
 
 namespace Pinion.Engine.Reporting;
 
@@ -24,6 +25,7 @@ public static class ConsoleReportRenderer
             sb.AppendLine($"Executed coverage:        {ReportText.Percent(cov.LineRate)} lines, " +
                           $"{ReportText.Percent(cov.BranchRate)} branches (Coverlet)");
         sb.AppendLine($"High-risk & UNPROTECTED:  {ReportText.N(report.HighRiskUnprotected)} methods");
+        sb.AppendLine($"Seams to introduce:       {ReportText.N(report.SeamsToIntroduce)} (high-risk methods that hard-wire deps — no test seam)");
         sb.AppendLine($"Migration landmines:      {ReportText.LandmineSummary(report.LandmineCounts)}");
         sb.AppendLine();
 
@@ -44,7 +46,11 @@ public static class ConsoleReportRenderer
                 string name = s.Unit.DisplayName + "()";
                 // Pad the name column for readability; let long names overflow gracefully.
                 string left = $"{i,2}. {name}";
-                sb.AppendLine($"{left,-42} risk {s.Score.Total,4:0.0}  ← {ReportText.Reason(s.Score)}");
+                // Flag the actionable case: a risky unit that needs a seam introduced before it can be locked.
+                string seam = s.Unit.Seamability == Seamability.NeedsSeam && s.Unit.SeamBlockers.Count > 0
+                    ? "  ⚠ needs seam: " + string.Join(", ", s.Unit.SeamBlockers.Take(2))
+                    : "";
+                sb.AppendLine($"{left,-42} risk {s.Score.Total,4:0.0}  ← {ReportText.Reason(s.Score)}{seam}");
                 i++;
             }
         }

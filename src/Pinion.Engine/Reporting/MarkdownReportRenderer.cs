@@ -25,21 +25,28 @@ public static class MarkdownReportRenderer
         if (report.Coverage is { } cov)
             sb.AppendLine($"| Executed coverage (Coverlet) | {ReportText.Percent(cov.LineRate)} lines, {ReportText.Percent(cov.BranchRate)} branches |");
         sb.AppendLine($"| High-risk & unprotected | {ReportText.N(report.HighRiskUnprotected)} methods (risk ≥ {report.HighRiskThreshold:0.0}) |");
+        sb.AppendLine($"| Seams to introduce | {ReportText.N(report.SeamsToIntroduce)} high-risk methods hard-wire deps (no test seam) |");
         sb.AppendLine($"| Migration landmines | {ReportText.LandmineSummary(report.LandmineCounts)} |");
         sb.AppendLine($"| Estimated behavior-lock effort | {ReportText.Effort(report.HighRiskUnprotected)} |");
         sb.AppendLine();
 
         sb.AppendLine("## Top risk hotspots");
         sb.AppendLine();
-        sb.AppendLine("| # | Unit | Risk | Why | File |");
-        sb.AppendLine("|---:|---|---:|---|---|");
+        sb.AppendLine("| # | Unit | Risk | Why | Seam | File |");
+        sb.AppendLine("|---:|---|---:|---|---|---|");
 
         int i = 1;
         foreach (var s in report.Hotspots)
         {
             string file = Path.GetFileName(s.Unit.FilePath);
             string location = string.IsNullOrEmpty(file) ? "" : $"{file}:{s.Unit.StartLine}";
-            sb.AppendLine($"| {i} | `{s.Unit.DisplayName}` | {s.Score.Total:0.0} | {ReportText.Reason(s.Score)} | {location} |");
+            string seam = s.Unit.Seamability switch
+            {
+                Pinion.Engine.Model.Seamability.NeedsSeam => "⚠ needs seam: " + string.Join(", ", s.Unit.SeamBlockers.Take(2)),
+                Pinion.Engine.Model.Seamability.SeamAvailable => "✓ " + string.Join(", ", s.Unit.SeamPoints.Take(2)),
+                _ => "",
+            };
+            sb.AppendLine($"| {i} | `{s.Unit.DisplayName}` | {s.Score.Total:0.0} | {ReportText.Reason(s.Score)} | {seam} | {location} |");
             i++;
         }
         sb.AppendLine();

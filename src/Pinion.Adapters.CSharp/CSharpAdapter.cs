@@ -84,7 +84,8 @@ public sealed class CSharpAdapter : ILanguageAdapter
                 testedMethodIds,
                 calleesById[m.Id],
                 callersById.TryGetValue(m.Id, out var callers) ? callers : new HashSet<string>(),
-                refNamesById[m.Id]));
+                refNamesById[m.Id],
+                ct));
         }
 
         return units;
@@ -151,7 +152,8 @@ public sealed class CSharpAdapter : ILanguageAdapter
         HashSet<string> testedMethodIds,
         HashSet<string> callees,
         HashSet<string> callers,
-        HashSet<string> refNames)
+        HashSet<string> refNames,
+        CancellationToken ct)
     {
         var symbol = m.Symbol;
         var decl = m.Decl;
@@ -182,6 +184,8 @@ public sealed class CSharpAdapter : ILanguageAdapter
             CSharpSyntaxFacts.AttributeNames(decl, typeDecl),
             lineSpan.Path);
 
+        var (seams, seamObstacles) = SeamAnalyzer.Analyze(symbol, decl, m.Model, ct);
+
         return new CodeUnit(
             Id: m.Id,
             DisplayName: RoslynSymbols.DisplayName(symbol),
@@ -198,7 +202,9 @@ public sealed class CSharpAdapter : ILanguageAdapter
             DomainTags: tags,
             HasTests: testedMethodIds.Contains(m.Id),
             IsPublicEntryPoint: RoslynSymbols.IsPublicEntryPoint(symbol),
-            MigrationLandmines: landmines);
+            MigrationLandmines: landmines,
+            Seams: seams,
+            SeamObstacles: seamObstacles);
     }
 
     /// <summary>

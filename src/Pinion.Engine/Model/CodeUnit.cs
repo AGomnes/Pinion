@@ -1,4 +1,22 @@
+using System.Text.Json.Serialization;
+
 namespace Pinion.Engine.Model;
+
+/// <summary>
+/// How readily a unit can be put under a characterization test, in Feathers' terms.
+/// </summary>
+public enum Seamability
+{
+    /// <summary>No collaborators worth substituting and no hard dependencies — test it directly.</summary>
+    Pure,
+
+    /// <summary>Has an object seam already — a substitutable collaborator (injected/parameter abstraction).</summary>
+    SeamAvailable,
+
+    /// <summary>Hard-wires its dependencies (news up concretes, calls statics/I/O) and offers no seam —
+    /// a seam must be introduced (Extract Interface / Parameterize Constructor) before it can be locked.</summary>
+    NeedsSeam,
+}
 
 /// <summary>
 /// The language-neutral intermediate representation the whole engine speaks.
@@ -22,6 +40,8 @@ namespace Pinion.Engine.Model;
 /// <param name="HasTests">True if referenced by any test project.</param>
 /// <param name="IsPublicEntryPoint">True if part of a public contract (public/protected member of a public type).</param>
 /// <param name="MigrationLandmines">.NET Framework→Core hazards, e.g. "WebForms", "WCF", "EF6". Empty until detection (Milestone 2).</param>
+/// <param name="Seams">Object seams already available — substitutable collaborators (injected/parameter abstractions) you can use to characterize this unit as-is.</param>
+/// <param name="SeamObstacles">Hard dependencies with no seam (e.g. "DateTime.Now", "new SqlConnection", "File") — a seam must be introduced before this unit can be safely locked.</param>
 public sealed record CodeUnit(
     string Id,
     string DisplayName,
@@ -38,7 +58,9 @@ public sealed record CodeUnit(
     IReadOnlyList<string> DomainTags,
     bool HasTests,
     bool IsPublicEntryPoint,
-    IReadOnlyList<string> MigrationLandmines)
+    IReadOnlyList<string> MigrationLandmines,
+    [property: JsonIgnore] IReadOnlyList<string>? Seams = null,
+    [property: JsonIgnore] IReadOnlyList<string>? SeamObstacles = null)
 {
     /// <summary>The bare member name — <see cref="DisplayName"/> after the last '.'.</summary>
     public string SimpleName
@@ -49,6 +71,18 @@ public sealed record CodeUnit(
             return dot >= 0 ? DisplayName[(dot + 1)..] : DisplayName;
         }
     }
+
+    /// <summary>Substitutable collaborators available now (never null). See <see cref="Seams"/>.</summary>
+    public IReadOnlyList<string> SeamPoints => Seams ?? Array.Empty<string>();
+
+    /// <summary>Hard dependencies that block testing until a seam is introduced (never null). See <see cref="SeamObstacles"/>.</summary>
+    public IReadOnlyList<string> SeamBlockers => SeamObstacles ?? Array.Empty<string>();
+
+    /// <summary>Whether this unit can be characterized as-is, or needs a seam introduced first.</summary>
+    public Seamability Seamability =>
+        SeamBlockers.Count > 0 && SeamPoints.Count == 0 ? Seamability.NeedsSeam
+        : SeamPoints.Count > 0 ? Seamability.SeamAvailable
+        : Seamability.Pure;
 }
 
 /// <summary>A single parameter of a <see cref="CodeUnit"/>.</summary>
