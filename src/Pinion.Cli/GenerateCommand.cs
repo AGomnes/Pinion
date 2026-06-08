@@ -228,6 +228,11 @@ internal static class GenerateCommand
                     Console.Error.WriteLine("error: ANTHROPIC_API_KEY is not set. Set it, or use the default --provider deterministic, or --dry-run.");
                     return 1;
                 }
+                // Catch a typo'd model id before it spends a (billable) call on a 404. Advisory — a
+                // newer id Pinion doesn't list yet is allowed through.
+                if (baseUrl == "https://api.anthropic.com" && !ModelCatalog.IsKnown(model))
+                    Console.Error.WriteLine($"warning: '{model}' is not a model id Pinion recognizes. " +
+                        $"Known: {string.Join(", ", ModelCatalog.Known)}. Proceeding — pass a correct id if this was a typo.");
                 llm = new AnthropicClient(apiKey, baseUrl);
             }
 
