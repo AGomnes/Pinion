@@ -146,6 +146,7 @@ dotnet src/Pinion.Cli/bin/Debug/net10.0/pinion.dll analyze samples/LegacyShop/Le
 | `--top <n>` | `0` (all) | show only the top N hotspots |
 | `--threshold <d>` | `3.5` | risk at/above which an untested method is "high-risk" |
 | `--coverage` | off | run the target's tests under Coverlet and include executed coverage % (slower) |
+| `--include-refs` | off | when the target is a single `.csproj`, also analyze its referenced projects (default: just the target project) |
 | `-v, --verbose` | off | print Roslyn/MSBuild diagnostics to stderr |
 
 ## `generate` (paid AI tier)
@@ -171,7 +172,14 @@ parameters (`out _` / ref temps), **overloads** (collision-safe class names), an
 returns** (`Span<T>` captured as text). Generic methods/types are **skipped cleanly** (reported, not
 emitted broken) — use `--provider anthropic` for those.
 
+`generate` writes its tests into a host **test project** that references the code under test plus xunit +
+Verify. If you don't have one, scaffold it: **`pinion init-tests <code.csproj>`** emits a Verify-ready
+xUnit project (and prints the exact `generate` command to run next).
+
 ```pwsh
+# One-time: scaffold a host test project next to the code you want to characterize.
+pinion init-tests samples/LegacyShop/src/LegacyShop/LegacyShop.csproj
+
 # Default — deterministic, offline, $0, nothing leaves the machine:
 pinion generate samples/LegacyShop/LegacyShop.slnx `
   --test-project samples/LegacyShop/tests/LegacyShop.Tests/LegacyShop.Tests.csproj `

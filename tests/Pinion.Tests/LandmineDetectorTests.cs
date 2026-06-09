@@ -35,9 +35,18 @@ public class LandmineDetectorTests
         Assert.Contains(MigrationLandmine.Ef6, Detect(usings: new[] { "System.Data.Entity" }));
         Assert.Contains(MigrationLandmine.Ef6, Detect(bases: new[] { "ObjectContext" }));
 
-        // A DbContext without the EF6 namespace is most likely EF Core — don't flag it.
+        // A DbContext WITH the EF Core namespace is EF Core — don't flag it.
         Assert.DoesNotContain(MigrationLandmine.Ef6,
             Detect(usings: new[] { "Microsoft.EntityFrameworkCore" }, bases: new[] { "DbContext" }));
+    }
+
+    [Fact]
+    public void Ef6_detected_for_a_derived_dbcontext_with_no_efcore_namespace()
+    {
+        // Previously a dead branch: a custom-named context `: DbContext` whose file imports neither the
+        // EF6 namespace nor EF Core (common in legacy code split across files) is now flagged EF6.
+        Assert.Contains(MigrationLandmine.Ef6, Detect(bases: new[] { "DbContext" }));
+        Assert.Contains(MigrationLandmine.Ef6, Detect(bases: new[] { "DbConfiguration" }));
     }
 
     [Fact]

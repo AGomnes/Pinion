@@ -18,8 +18,13 @@ namespace Pinion.Adapters.CSharp;
 public sealed class CSharpAdapter : ILanguageAdapter
 {
     private readonly Action<string>? _log;
+    private readonly bool _includeReferencedProjects;
 
-    public CSharpAdapter(Action<string>? log = null) => _log = log;
+    public CSharpAdapter(Action<string>? log = null, bool includeReferencedProjects = false)
+    {
+        _log = log;
+        _includeReferencedProjects = includeReferencedProjects;
+    }
 
     public string Language => "csharp";
 
@@ -38,6 +43,12 @@ public sealed class CSharpAdapter : ILanguageAdapter
     {
         string path = ResolveInputPath(projectOrSolutionPath);
 
+        // `analyze Foo.csproj` should report Foo's methods — not silently include methods from Foo's
+        // project references. So scope to the target project unless the input is a solution or the caller
+        // opted into referenced projects.
+        bool isProject = path.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase);
+        string? targetProjectPath = isProject && !_includeReferencedProjects ? path : null;
+
         MSBuildWorkspace? msbuild = null;
         Workspace? scanWorkspace = null;
         try
@@ -46,7 +57,7 @@ public sealed class CSharpAdapter : ILanguageAdapter
             // The source-scan fallback returns an AdhocWorkspace that isn't `msbuild`; track it so it's
             // disposed too (it was previously leaked for the process lifetime).
             if (!ReferenceEquals(solution.Workspace, msbuild)) scanWorkspace = solution.Workspace;
-            return await AnalyzeSolutionAsync(solution, ct).ConfigureAwait(false);
+            return await AnalyzeSolutionAsync(solution, targetProjectPath, ct).ConfigureAwait(false);
         }
         finally
         {
@@ -55,16 +66,25 @@ public sealed class CSharpAdapter : ILanguageAdapter
         }
     }
 
-    private async Task<IReadOnlyList<CodeUnit>> AnalyzeSolutionAsync(Solution solution, CancellationToken ct)
+    private async Task<IReadOnlyList<CodeUnit>> AnalyzeSolutionAsync(Solution solution, string? targetProjectPath, CancellationToken ct)
     {
         // Which symbols any test project references — turns "untested" into a fact.
         var testedMethodIds = await CollectTestedMethodIdsAsync(solution, ct).ConfigureAwait(false);
 
         // Pass 1: gather every production method with its declaration + semantic model.
-        var raw = await GatherProductionMethodsAsync(solution, ct).ConfigureAwait(false);
+        var raw = await GatherProductionMethodsAsync(solution, targetProjectPath, ct).ConfigureAwait(false);
         var byId = new Dictionary<string, RawMethod>(StringComparer.Ordinal);
         foreach (var m in raw) byId.TryAdd(m.Id, m); // first declaration wins (partials/dupes)
         var knownIds = byId.Keys.ToHashSet(StringComparer.Ordinal);
+
+        // Syntactic (simple name, parameter count) → ids index, used to recover calls Roslyn can't resolve
+        // on unrestored/legacy code (where blast-radius otherwise collapses to ~0).
+        var nameArity = new Dictionary<(string, int), List<string>>();
+        foreach (var m in byId.Values)
+        {
+            var key = (m.Symbol.Name, m.Symbol.Parameters.Length);
+            (nameArity.TryGetValue(key, out var list) ? list : nameArity[key] = new()).Add(m.Id);
+        }
 
         // Pass 2: call graph (callees within the analyzed set) + referenced names for tagging.
         var calleesById = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
@@ -74,7 +94,7 @@ public sealed class CSharpAdapter : ILanguageAdapter
         foreach (var m in byId.Values)
         {
             ct.ThrowIfCancellationRequested();
-            var (callees, refNames) = AnalyzeBody(m, knownIds, ct);
+            var (callees, refNames) = AnalyzeBody(m, knownIds, nameArity, ct);
             calleesById[m.Id] = callees;
             refNamesById[m.Id] = refNames;
             foreach (var callee in callees)
@@ -99,13 +119,15 @@ public sealed class CSharpAdapter : ILanguageAdapter
         return units;
     }
 
-    private async Task<List<RawMethod>> GatherProductionMethodsAsync(Solution solution, CancellationToken ct)
+    private async Task<List<RawMethod>> GatherProductionMethodsAsync(Solution solution, string? targetProjectPath, CancellationToken ct)
     {
         var raw = new List<RawMethod>();
         foreach (var project in solution.Projects)
         {
             ct.ThrowIfCancellationRequested();
             if (project.Language != LanguageNames.CSharp) continue;
+            // Scope to the target project when requested (single-project analyze without --include-refs).
+            if (targetProjectPath is not null && !SamePath(project.FilePath, targetProjectPath)) continue;
 
             var compilation = await project.GetCompilationAsync(ct).ConfigureAwait(false);
             if (compilation is null || IsTestProject(project, compilation)) continue;
@@ -184,7 +206,8 @@ public sealed class CSharpAdapter : ILanguageAdapter
 
     /// <summary>Resolve calls in a method body into in-graph callee ids and a bag of referenced names.</summary>
     private static (HashSet<string> Callees, HashSet<string> RefNames) AnalyzeBody(
-        RawMethod m, HashSet<string> knownIds, CancellationToken ct)
+        RawMethod m, HashSet<string> knownIds,
+        IReadOnlyDictionary<(string, int), List<string>> nameArity, CancellationToken ct)
     {
         var callees = new HashSet<string>(StringComparer.Ordinal);
         var refNames = new HashSet<string>(StringComparer.Ordinal);
@@ -195,18 +218,51 @@ public sealed class CSharpAdapter : ILanguageAdapter
         foreach (var node in body.DescendantNodes())
         {
             if (node is not (InvocationExpressionSyntax or ObjectCreationExpressionSyntax)) continue;
-            if (m.Model.GetSymbolInfo(node, ct).Symbol is not IMethodSymbol called) continue;
 
-            refNames.Add(called.Name);
-            if (called.ContainingType is { } ct2) refNames.Add(ct2.Name);
+            var info = m.Model.GetSymbolInfo(node, ct);
+            // Prefer the resolved symbol; on unrestored/legacy code, fall back to the overload candidates
+            // Roslyn knew but couldn't pick (CandidateSymbols) so the call graph stays populated.
+            IMethodSymbol? called = info.Symbol as IMethodSymbol
+                ?? info.CandidateSymbols.OfType<IMethodSymbol>().FirstOrDefault();
 
-            string calleeId = RoslynSymbols.MethodId(called.OriginalDefinition);
-            if (calleeId != m.Id && knownIds.Contains(calleeId))
-                callees.Add(calleeId);
+            if (called is not null)
+            {
+                refNames.Add(called.Name);
+                if (called.ContainingType is { } ct2) refNames.Add(ct2.Name);
+
+                string calleeId = RoslynSymbols.MethodId(called.OriginalDefinition);
+                if (calleeId != m.Id && knownIds.Contains(calleeId)) callees.Add(calleeId);
+                continue;
+            }
+
+            // Fully unresolved (typical when references didn't restore): recover blast-radius with a
+            // SYNTACTIC name+arity match, but only when UNAMBIGUOUS (exactly one in-set method) so a common
+            // name like "Add" can't be misattributed across overloads/types.
+            if (node is InvocationExpressionSyntax inv && InvokedName(inv) is { } name)
+            {
+                refNames.Add(name);
+                if (UniqueCalleeByName(nameArity, name, inv.ArgumentList.Arguments.Count, m.Id) is { } id)
+                    callees.Add(id);
+            }
         }
 
         return (callees, refNames);
     }
+
+    /// <summary>The single in-set method id matching (name, arity), or null when there is none or more than
+    /// one (ambiguous — refuse to guess, so a common name can't be misattributed) or it would be self.</summary>
+    internal static string? UniqueCalleeByName(
+        IReadOnlyDictionary<(string, int), List<string>> nameArity, string name, int arity, string selfId) =>
+        nameArity.TryGetValue((name, arity), out var ids) && ids.Count == 1 && ids[0] != selfId ? ids[0] : null;
+
+    /// <summary>The simple method name invoked, syntactically — for the resolution-free blast-radius fallback.</summary>
+    private static string? InvokedName(InvocationExpressionSyntax inv) => inv.Expression switch
+    {
+        MemberAccessExpressionSyntax ma => ma.Name.Identifier.ValueText,   // x.Foo()
+        MemberBindingExpressionSyntax mb => mb.Name.Identifier.ValueText,  // x?.Foo()
+        IdentifierNameSyntax id => id.Identifier.ValueText,                // Foo()
+        _ => null,
+    };
 
     private static CodeUnit ToCodeUnit(
         RawMethod m,
@@ -385,6 +441,11 @@ public sealed class CSharpAdapter : ILanguageAdapter
 
     internal static bool HasCSharpDocuments(Solution solution) =>
         solution.Projects.Any(p => p.Language == LanguageNames.CSharp && p.Documents.Any());
+
+    /// <summary>Case-insensitive full-path equality (both non-null).</summary>
+    private static bool SamePath(string? a, string? b) =>
+        a is not null && b is not null
+        && string.Equals(Path.GetFullPath(a), Path.GetFullPath(b), StringComparison.OrdinalIgnoreCase);
 
     /// <summary>Accepts a .sln/.csproj path or a directory; finds the obvious target in a directory.</summary>
     internal static string ResolveInputPath(string input)

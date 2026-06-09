@@ -105,4 +105,23 @@ public class MemberCoverageTests
         Assert.Contains("Withdraw", clamp.Id);
         Assert.Contains("/Clamp(", clamp.Id);
     }
+
+    [Fact]
+    public void Blast_radius_syntactic_fallback_matches_only_when_unambiguous()
+    {
+        // The resolution-free fallback that recovers blast-radius on unbuilt code must NOT guess: it only
+        // attributes a call when exactly one in-set method matches the (name, arity), never for an
+        // overloaded/duplicated name, and never to itself.
+        var index = new Dictionary<(string, int), List<string>>
+        {
+            [("Twice", 1)] = new() { "H.Twice(int)" },                  // unique
+            [("Add", 1)] = new() { "A.Add(int)", "B.Add(int)" },        // ambiguous across two types
+        };
+
+        Assert.Equal("H.Twice(int)", CSharpAdapter.UniqueCalleeByName(index, "Twice", 1, "caller"));
+        Assert.Null(CSharpAdapter.UniqueCalleeByName(index, "Add", 1, "caller"));         // ambiguous → refuse
+        Assert.Null(CSharpAdapter.UniqueCalleeByName(index, "Twice", 1, "H.Twice(int)")); // self → refuse
+        Assert.Null(CSharpAdapter.UniqueCalleeByName(index, "Twice", 2, "caller"));       // arity mismatch
+        Assert.Null(CSharpAdapter.UniqueCalleeByName(index, "Missing", 0, "caller"));     // not in set
+    }
 }
