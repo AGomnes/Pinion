@@ -238,9 +238,14 @@ internal sealed partial class CSharpDeterministicSynthesizer : IDisposable
         // Include a short id hash so overloads (same DisplayName) don't collide on class name.
         string className = $"{SafeId(unit.DisplayName)}_{ShortHash(unit.Id)}_CharacterizationTests";
 
-        // out params carry no input value; others vary across their candidates.
+        // out params carry no input value; others vary across their candidates. A top-level string
+        // parameter is routed through the guard solver, which spans each guard's boundary (conjunctions
+        // the constant-miner can't satisfy); everything else uses the constant-driven generator.
+        SyntaxNode? methodBody = (SyntaxNode?)r.Decl.Body ?? r.Decl.ExpressionBody;
         var perParam = method.Parameters
-            .Select(p => p.RefKind == RefKind.Out ? new List<string> { "out _" } : Candidates(p.Type, mined))
+            .Select(p => p.RefKind == RefKind.Out ? new List<string> { "out _" }
+                       : p.Type.SpecialType == SpecialType.System_String ? StringCandidates(p, methodBody, mined)
+                       : Candidates(p.Type, mined))
             .ToList();
         var rows = BuildRows(perParam);
         // Property-based tier: for methods with numeric inputs, add deterministic joint-random rows.

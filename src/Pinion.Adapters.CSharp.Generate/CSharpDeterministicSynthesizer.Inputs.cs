@@ -108,6 +108,36 @@ internal sealed partial class CSharpDeterministicSynthesizer
         return (-10, Math.Max(10_000, mx * 2 + 100));
     }
 
+    // String parameters carry the most guard structure, so allow a few more candidates than the generic cap.
+    private const int StringCandidateCap = 10;
+
+    /// <summary>
+    /// Candidates for a top-level string parameter. Extracts the method's own guards on the parameter and
+    /// emits a witness that clears them plus near-misses that fail one guard at a time
+    /// (<see cref="StringGuardSolver"/>) — the conjunction cases the constant-miner can't reach. Falls back
+    /// to the simple rich witness when the method applies no recognizable string guards.
+    /// </summary>
+    private List<string> StringCandidates(IParameterSymbol p, SyntaxNode? body, Mined mined)
+    {
+        var values = new List<string>();
+
+        if (body is not null)
+        {
+            var guards = StringGuardSolver.Extract(body, p.Name);
+            if (guards.Any)
+                foreach (var s in StringGuardSolver.Candidates(guards))
+                    values.Add(Quote(s));
+        }
+
+        if (values.Count == 0)
+            values.Add(Quote(RichString(GuardLength(mined)))); // no guards found — the simple rich witness
+        values.Add("\"12345\"");                                // numeric — reaches int.TryParse/Parse branches
+        foreach (var s in mined.Strings) values.Add(Quote(s));
+        values.Add("\"\""); values.Add("null");
+
+        return values.Distinct().Take(StringCandidateCap).ToList();
+    }
+
     /// <summary>Candidate source-literals for a parameter: mined constants + boundaries + a small catalog.</summary>
     private List<string> Candidates(ITypeSymbol type, Mined mined)
     {

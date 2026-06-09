@@ -185,6 +185,25 @@ public class DeterministicSynthesizerTests
     }
 
     [Fact]
+    public void Conjunctive_string_guards_get_boundary_near_misses()
+    {
+        string sampleRoot = Path.Combine(RepoRoot(), "samples", "LegacyShop");
+        string file = Path.Combine(sampleRoot, "src", "LegacyShop", "AuthHandler.cs");
+        var unit = UnitAt(file, "AuthHandler.ValidateToken", "ValidateToken");
+
+        string src = new CSharpTestGenerator().SynthesizeDeterministic(unit, sampleRoot, default);
+
+        // The happy-path witness still clears the full conjunction...
+        Assert.Contains("\"Ab1Ab1Ab1Ab1Ab1A\"", src);
+        // ...but now each guard also gets a near-miss the old one-hot generator never produced — so a
+        // mutation to any single guard is killed by the input that isolates it:
+        Assert.Contains("\"Ab1Ab1Ab1Ab1Ab1\"", src);   // length 15 — under the 16-char floor
+        Assert.Contains("\"AbcAbcAbcAbcAbcA\"", src);   // 16 letters, no digit
+        Assert.Contains("\"1231231231231231\"", src);   // 16 digits, no letter
+        Assert.Contains("\"-Ab1Ab1Ab1Ab1Ab1A\"", src); // starts with '-'
+    }
+
+    [Fact]
     public void Property_based_sampling_adds_joint_random_rows_for_numeric_methods()
     {
         string root = RepoRoot();
