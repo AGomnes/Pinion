@@ -103,4 +103,30 @@ public class StringGuardSolverTests
         var g = Extract("bool M(string p) { return p.Length >= 8 && p.StartsWith(\"A\"); }", "p");
         Assert.Equal(StringGuardSolver.Candidates(g), StringGuardSolver.Candidates(g));
     }
+
+    [Fact]
+    public void Extracts_a_regex_pattern_and_synthesizes_a_match_and_non_match()
+    {
+        const string pat = @"^[A-Z]{3}-\d{4}$";
+        var g = Extract("""
+            bool M(string sku) => System.Text.RegularExpressions.Regex.IsMatch(sku, @"^[A-Z]{3}-\d{4}$");
+            """, "sku");
+
+        Assert.True(g.Any);
+        Assert.Contains(pat, g.Regexes);
+
+        var c = StringGuardSolver.Candidates(g);
+        Assert.Contains(c, s => System.Text.RegularExpressions.Regex.IsMatch(s, pat));   // reaches the accept branch
+        Assert.Contains(c, s => !System.Text.RegularExpressions.Regex.IsMatch(s, pat));  // and the reject branch
+    }
+
+    [Fact]
+    public void Extracts_the_instance_regex_form()
+    {
+        var g = Extract("""
+            bool M(string s) => new System.Text.RegularExpressions.Regex(@"\d{3}").IsMatch(s);
+            """, "s");
+
+        Assert.Contains(@"\d{3}", g.Regexes);
+    }
 }

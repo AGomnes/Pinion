@@ -26,13 +26,14 @@ internal static class StringGuardSolver
         IReadOnlyList<string> Contains,
         IReadOnlyList<string> Exact,
         bool RequireLetter,
-        bool RequireDigit)
+        bool RequireDigit,
+        IReadOnlyList<string> Regexes)
     {
-        // Engage only for STRUCTURAL guards (length / char-class / affix) — the conjunctions the
+        // Engage only for STRUCTURAL guards (length / char-class / affix / regex) — the conjunctions the
         // constant-miner can't satisfy. Pure `== "literal"` equality is already covered by mined strings,
         // so Exact alone does not trigger the solver (it's still included when it does engage).
         public bool Any => Lengths.Count > 0 || Prefix is not null || Suffix is not null
-            || Contains.Count > 0 || RequireLetter || RequireDigit;
+            || Contains.Count > 0 || RequireLetter || RequireDigit || Regexes.Count > 0;
     }
 
     /// <summary>Extract the guards method <paramref name="body"/> applies to the parameter named
@@ -43,10 +44,14 @@ internal static class StringGuardSolver
         string? prefix = null, suffix = null;
         var contains = new List<string>();
         var exact = new List<string>();
+        var regexes = new List<string>();
         bool requireLetter = false, requireDigit = false;
 
         bool IsParam(ExpressionSyntax e) =>
             e is IdentifierNameSyntax id && id.Identifier.ValueText == paramName;
+
+        static bool IsRegexType(string typeText) =>
+            typeText is "Regex" or "System.Text.RegularExpressions.Regex";
 
         // `p.Length` member access.
         bool IsParamLength(ExpressionSyntax e) =>
@@ -92,6 +97,20 @@ internal static class StringGuardSolver
                         if (member is "IsLetter" or "IsLetterOrDigit") requireLetter = true;
                         if (member is "IsDigit" or "IsLetterOrDigit") requireDigit = true;
                     }
+
+                    // Regex.IsMatch(p, "pattern" [, options])  OR  new Regex("pattern").IsMatch(p)
+                    if (member == "IsMatch")
+                    {
+                        var a = inv.ArgumentList.Arguments;
+                        if (IsRegexType(ma.Expression.ToString()) && a.Count >= 2 && IsParam(a[0].Expression)
+                            && StringLiteral(a[1].Expression) is { } staticPat)
+                            regexes.Add(staticPat);
+                        else if (ma.Expression is ObjectCreationExpressionSyntax oce && IsRegexType(oce.Type.ToString())
+                            && oce.ArgumentList is { Arguments.Count: >= 1 } cargs
+                            && StringLiteral(cargs.Arguments[0].Expression) is { } instancePat
+                            && a.Count >= 1 && IsParam(a[0].Expression))
+                            regexes.Add(instancePat);
+                    }
                     break;
             }
         }
@@ -100,7 +119,8 @@ internal static class StringGuardSolver
             lengths.ToList(), prefix, suffix,
             contains.Distinct(StringComparer.Ordinal).ToList(),
             exact.Distinct(StringComparer.Ordinal).ToList(),
-            requireLetter, requireDigit);
+            requireLetter, requireDigit,
+            regexes.Distinct(StringComparer.Ordinal).ToList());
     }
 
     /// <summary>
@@ -140,7 +160,17 @@ internal static class StringGuardSolver
             if (hi > floor && hi < MaxSynthLength) Add(Alnum(hi + 1));
         }
 
-        // 9. Exact-equality literals — trivially exercise the `== "literal"` branch.
+        // 9. Regex guards: a string that MATCHES the pattern (reaches the accept branch the simple witness
+        //    never hits) plus a verified non-match. RegexSampler only returns a .NET-verified match, so a
+        //    pattern it can't model is simply skipped.
+        foreach (var pat in g.Regexes)
+        {
+            if (RegexSampler.GenerateMatch(pat) is not { } match) continue;
+            Add(match);
+            if (RegexSampler.GenerateNonMatch(pat, match) is { } nonMatch) Add(nonMatch);
+        }
+
+        // 10. Exact-equality literals — trivially exercise the `== "literal"` branch.
         foreach (var e in g.Exact) Add(e);
 
         return values.Distinct(StringComparer.Ordinal).ToList();

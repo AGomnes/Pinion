@@ -204,6 +204,19 @@ public class DeterministicSynthesizerTests
     }
 
     [Fact]
+    public void Regex_gated_method_gets_a_matching_input_for_the_accept_path()
+    {
+        // ClassifySku guards with Regex.IsMatch(sku, "^[A-Z]{3}-\d{4}$"); the accept path (Substring calls)
+        // is only reached by a MATCHING string, which the old "Ab1…" witness never produced.
+        string sampleRoot = Path.Combine(RepoRoot(), "samples", "LegacyShop");
+        string file = Path.Combine(sampleRoot, "src", "LegacyShop", "SkuValidator.cs");
+        var unit = UnitAt(file, "SkuValidator.ClassifySku", "ClassifySku");
+
+        string src = new CSharpTestGenerator().SynthesizeDeterministic(unit, sampleRoot, default);
+        Assert.Contains("\"AAA-5555\"", src);
+    }
+
+    [Fact]
     public void Property_based_sampling_adds_joint_random_rows_for_numeric_methods()
     {
         string root = RepoRoot();
