@@ -32,6 +32,12 @@ internal static class ProcessRunner
         if (env is not null)
             foreach (var kv in env) psi.Environment[kv.Key] = kv.Value;
 
+        // SECURITY: a spawned child inherits this process's environment. `generate`/`verify`/`prove`
+        // launch `dotnet test`, which EXECUTES the user's (untrusted, legacy) code — so the code under
+        // characterization could otherwise read ANTHROPIC_API_KEY (and friends) out of its own process
+        // environment and exfiltrate it. The runner never needs those secrets; strip them before launch.
+        ScrubSecretsFrom(psi.Environment);
+
         using var proc = new Process { StartInfo = psi };
         proc.Start();
 
@@ -63,6 +69,25 @@ internal static class ProcessRunner
 
         await Task.WhenAll(stdout, stderr).ConfigureAwait(false);
         return new ProcessResult(proc.ExitCode, stdout.Result, stderr.Result);
+    }
+
+    /// <summary>
+    /// Secrets that may sit in Pinion's own environment but that a spawned child must never inherit.
+    /// Deliberately limited to LLM/provider API keys + the license-signing key — NOT cloud/feed
+    /// credentials (AWS/GitHub/NuGet), which a legitimate `dotnet restore`/test can need, so stripping
+    /// those could break the run. The dominant, always-safe entry is ANTHROPIC_API_KEY.
+    /// </summary>
+    internal static readonly string[] SecretEnvVars =
+    {
+        "ANTHROPIC_API_KEY",      // the key Pinion's own AI tier requires the user to set
+        "OPENAI_API_KEY", "AZURE_OPENAI_API_KEY", "GOOGLE_API_KEY", "GEMINI_API_KEY", "MISTRAL_API_KEY",
+        "PINION_SIGNING_KEY",     // license-minting private key (vendor tool); never needed downstream
+    };
+
+    /// <summary>Remove every <see cref="SecretEnvVars"/> entry from a child process's environment.</summary>
+    internal static void ScrubSecretsFrom(IDictionary<string, string?> environment)
+    {
+        foreach (var name in SecretEnvVars) environment.Remove(name);
     }
 
     private static void TryKill(Process proc)

@@ -61,6 +61,15 @@ defenses enforce this, both before any byte leaves:
    never-send unit's source is never read into a payload, never previewed, and never sent. Such methods
    are still locally characterizable with `--provider deterministic`.
 
+### Your own API key is protected from the code Pinion runs
+`generate` *executes* the code under characterization (via `dotnet test`) to capture its behavior. Child
+processes normally inherit the parent's environment — so without care, a method under test could read
+`ANTHROPIC_API_KEY` out of its own process environment and exfiltrate it. Pinion **strips its API-key
+variables from the environment of every child process it launches**
+([`ProcessRunner.ScrubSecretsFrom`](src/Pinion.Adapters.CSharp/ProcessRunner.cs)), so the code it runs
+never sees the key. The key itself is read only from the environment, travels only as the `x-api-key`
+header, and is never written to disk, logged, or placed in a request body or `--dry-run` output.
+
 ### Audit exactly what would be sent — `--dry-run`
 `generate … --dry-run` prints the *exact bytes* that would be POSTed and makes **no** network call (no
 license required). This is the literal payload — run it and read it.

@@ -415,6 +415,53 @@ never a CLI flag (flags leak into shell history and process listings). It travel
 logs; error messages log response bodies only. The pre-send scrubber also redacts `sk-ant-…` tokens
 from outbound source, so a key embedded in code won't reach the model either.
 
+**Setting the key (end users with the installed tool).** The key lives nowhere inside Pinion — not in
+the binary, not in a shipped config file — so you never need access to the source to use the AI tier.
+It is a runtime environment variable you set in your own environment. Get a key from the
+[Anthropic Console](https://console.anthropic.com/) (*API Keys*), then set `ANTHROPIC_API_KEY` and run
+`pinion generate … --provider anthropic` in the same environment:
+
+```pwsh
+# Windows (PowerShell) — current session only:
+$env:ANTHROPIC_API_KEY = "sk-ant-…"
+
+# Windows — persist for your user (then open a NEW terminal so it's picked up):
+setx ANTHROPIC_API_KEY "sk-ant-…"
+```
+
+```bash
+# macOS / Linux — current shell (append the same line to ~/.zshrc or ~/.bashrc to persist):
+export ANTHROPIC_API_KEY="sk-ant-…"
+```
+
+In CI, store it as a **secret** (never in the YAML) and expose it as an env var on the step:
+
+```yaml
+# GitHub Actions
+- run: dotnet pinion generate … --provider anthropic
+  env:
+    ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+
+# Azure DevOps — map a secret pipeline variable to the env:
+- script: dotnet pinion generate … --provider anthropic
+  env:
+    ANTHROPIC_API_KEY: $(ANTHROPIC_API_KEY)
+```
+
+The customer brings their own key; the vendor issues only the offline **license** (separate — see
+[Licensing](#licensing-offline-no-phone-home)). The **local-model** path (`--base-url
+http://localhost:<port>`) reads the *same* variable — most local Anthropic-compatible servers accept
+any non-empty value (or a token you configure), so set `ANTHROPIC_API_KEY` to that and nothing leaves
+the machine.
+
+Two things worth knowing about where the key lives:
+- **`setx` (and the GUI) persist the key** to your user environment — on Windows, the registry — so it
+  survives reboots. Prefer the session-only `$env:` / `export` form if you'd rather it not be stored.
+- **Pinion strips these key variables from the environment of every child process it launches** —
+  notably the `dotnet test` it runs to *execute your code* — so a method under characterization can't
+  read the API key out of its own process environment and exfiltrate it
+  ([`ProcessRunner.ScrubSecretsFrom`](src/Pinion.Adapters.CSharp/ProcessRunner.cs)).
+
 **Runaway-spend guards** (a loop over methods × repair attempts hits a paid API):
 
 | Guard | Default | Effect |
@@ -422,7 +469,8 @@ from outbound source, so a key embedded in code won't reach the model either.
 | `--max-spend <usd>` | `5.00` | Hard ceiling — the run stops before the next call once cumulative estimated cost crosses it. |
 | `--max-targets <n>` | `25` | Caps how many methods one run characterizes (stops an accidental broad `--target`/`--top`). |
 | `--max-repairs <n>` | `3` | Bounds calls per target (≤ N+1). |
-| auth/quota errors | — | A `401/403/429` aborts the run immediately instead of burning more calls. |
+| auth errors | — | A `401/403` aborts the run immediately instead of burning more calls. |
+| rate-limit / 5xx | — | A `429`/`5xx` is retried with exponential backoff (honoring `Retry-After`); the run aborts only if retries are exhausted. |
 
 Every run prints a usage summary (`N calls, X in / Y out tokens, ~$Z`). Offline providers
 (`heuristic`, `--dry-run`, `--base-url` local model) cost **$0** and never trip the ceiling.
