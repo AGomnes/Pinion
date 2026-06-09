@@ -37,6 +37,31 @@ public class HardCases
     // with a real culture (not default→null) to capture real formatting behavior.
     public string ToStringInvariant(decimal amount, System.IFormatProvider provider) =>
         amount.ToString("C", provider);
+
+    // ---- Tier-1 regression shapes: each previously emitted a characterization test that didn't compile ----
+
+    /// <summary>float parameter + a mined float constant — inputs must be `f`-suffixed, not `0d`/`1.5d`.</summary>
+    public float Scale(float factor) => factor < 1.5f ? factor : factor * 2f;
+
+    /// <summary>Branches on a string constant containing a newline — the mined literal must be escaped (CS1010).</summary>
+    public string Multiline(string s) => s == "line1\nline2" ? "match" : "other";
+
+    /// <summary>Compares against a non-finite double — the mined constant has no bare literal form (`Infinityd`).</summary>
+    public string Classify(double x) => x >= double.PositiveInfinity ? "infinite" : "finite";
+
+    /// <summary>ref string — a `null` candidate must declare the temp with an explicit type, not `var` (CS0815).</summary>
+    public void Relabel(ref string label) => label = string.IsNullOrEmpty(label) ? "none" : label.Trim();
+
+    /// <summary>Parameter type has a `required` member — construction needs an object initializer (CS9035).</summary>
+    public string Ship(Shipment shipment) => $"{shipment.Destination}:{shipment.Weight}";
+}
+
+/// <summary>A type with a <c>required</c> member — <c>new Shipment()</c> without an initializer is CS9035,
+/// so the synthesizer must emit <c>new Shipment { Destination = … }</c>.</summary>
+public sealed class Shipment
+{
+    public required string Destination { get; init; }
+    public int Weight { get; set; }
 }
 
 /// <summary>A service interface with no construction path — the DI-heavy-service case the synthesizer

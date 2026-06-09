@@ -38,6 +38,17 @@ public class SecretScrubberTests
         Assert.Equal(code, r.Text);
         Assert.Equal(0, r.Redactions);
     }
+
+    [Fact]
+    public void Redacts_a_multiline_quoted_secret()
+    {
+        // A secret value that spans newlines (verbatim string / wrapped token) must still be redacted —
+        // the assignment scrubber's value group is [\s\S]*?, not '.', which would stop at the first newline.
+        var r = SecretScrubber.Scrub("var secret = \"line1\nline2\nline3\";");
+        Assert.DoesNotContain("line2", r.Text);
+        Assert.Contains("[REDACTED]", r.Text);
+        Assert.Equal(1, r.Redactions);
+    }
 }
 
 public class PromptAndExtractionTests

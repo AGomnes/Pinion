@@ -24,7 +24,7 @@ public static class MarkdownReportRenderer
         sb.AppendLine($"| Behavior coverage | {ReportText.Percent(report.BehaviorCoverage)} ({ReportText.N(report.TestedMethods)} of {ReportText.N(report.ScannedMethods)} tested) |");
         if (report.Coverage is { } cov)
             sb.AppendLine($"| Executed coverage (Coverlet) | {ReportText.Percent(cov.LineRate)} lines, {ReportText.Percent(cov.BranchRate)} branches |");
-        sb.AppendLine($"| High-risk & unprotected | {ReportText.N(report.HighRiskUnprotected)} methods (risk ≥ {report.HighRiskThreshold:0.0}) |");
+        sb.AppendLine($"| High-risk & unprotected | {ReportText.N(report.HighRiskUnprotected)} methods (risk ≥ {report.HighRiskThreshold.ToString("0.0", ReportText.Culture)}) |");
         sb.AppendLine($"| Seams to introduce | {ReportText.N(report.SeamsToIntroduce)} high-risk methods hard-wire deps (no test seam) |");
         sb.AppendLine($"| Migration landmines | {ReportText.LandmineSummary(report.LandmineCounts)} |");
         sb.AppendLine($"| Estimated behavior-lock effort | {ReportText.Effort(report.HighRiskUnprotected)} |");
@@ -46,7 +46,7 @@ public static class MarkdownReportRenderer
                 Pinion.Engine.Model.Seamability.SeamAvailable => "✓ " + string.Join(", ", s.Unit.SeamPoints.Take(2)),
                 _ => "",
             };
-            sb.AppendLine($"| {i} | `{s.Unit.DisplayName}` | {s.Score.Total:0.0} | {ReportText.Reason(s.Score)} | {seam} | {location} |");
+            sb.AppendLine($"| {i} | {Code(s.Unit.DisplayName)} | {s.Score.Total.ToString("0.0", ReportText.Culture)} | {Cell(ReportText.Reason(s.Score))} | {Cell(seam)} | {Cell(location)} |");
             i++;
         }
         sb.AppendLine();
@@ -57,4 +57,12 @@ public static class MarkdownReportRenderer
 
         return sb.ToString();
     }
+
+    /// <summary>Escape a value for a Markdown table cell: a pipe breaks columns and a newline breaks the row.</summary>
+    private static string Cell(string s) =>
+        s.Replace("\r", " ").Replace("\n", " ").Replace("|", "\\|");
+
+    /// <summary>A backtick code-span cell (for identifiers): backticks can't nest, and a pipe still escapes.
+    /// Code spans also stop a generic name like <c>Repo&lt;T&gt;</c> from being read as HTML.</summary>
+    private static string Code(string s) => "`" + Cell(s).Replace("`", "'") + "`";
 }

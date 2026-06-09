@@ -24,10 +24,17 @@ internal static class CSharpSyntaxFacts
             .ToList()
         ?? new List<string>();
 
-    /// <summary>Simple attribute names on the type and method, e.g. "ServiceContract".</summary>
-    public static IReadOnlyList<string> AttributeNames(MethodDeclarationSyntax method, TypeDeclarationSyntax? type)
+    /// <summary>Simple attribute names on the type and the member, e.g. "ServiceContract". Accepts any
+    /// member-declaration node (method, constructor, operator, property/indexer, accessor, local function).</summary>
+    public static IReadOnlyList<string> AttributeNames(SyntaxNode member, TypeDeclarationSyntax? type)
     {
-        var lists = method.AttributeLists.AsEnumerable();
+        IEnumerable<AttributeListSyntax> lists = member switch
+        {
+            MemberDeclarationSyntax md => md.AttributeLists,          // method/ctor/operator/property/indexer
+            AccessorDeclarationSyntax a => a.AttributeLists,          // get/set/init/add/remove
+            LocalFunctionStatementSyntax lf => lf.AttributeLists,     // local function
+            _ => Enumerable.Empty<AttributeListSyntax>(),
+        };
         if (type is not null) lists = lists.Concat(type.AttributeLists);
 
         return lists

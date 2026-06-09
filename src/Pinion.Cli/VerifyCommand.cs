@@ -40,11 +40,12 @@ internal static class VerifyCommand
         {
             Description = "Open the rendered report in the default browser (a static file — no server is started).",
         };
+        var forceOption = new Option<bool>("--force") { Description = "Overwrite the --out file if it already exists." };
         var verboseOption = new Option<bool>("--verbose", "-v") { Description = "Print diagnostics to stderr." };
 
         var cmd = new Command("verify", "Re-run the locked behavior against current code and report what changed (CI gate).")
         {
-            projectArg, formatOption, outOption, subdirOption, timeoutOption, openOption, verboseOption,
+            projectArg, formatOption, outOption, subdirOption, timeoutOption, openOption, forceOption, verboseOption,
         };
 
         cmd.SetAction(async (parse, ct) => await RunAsync(
@@ -54,6 +55,7 @@ internal static class VerifyCommand
             parse.GetValue(subdirOption)!,
             parse.GetValue(timeoutOption),
             parse.GetValue(openOption),
+            parse.GetValue(forceOption),
             parse.GetValue(verboseOption),
             ct));
 
@@ -61,7 +63,7 @@ internal static class VerifyCommand
     }
 
     private static async Task<int> RunAsync(
-        string testProject, OutputFormat format, FileInfo? outFile, string subdir, int timeout, bool open, bool verbose, CancellationToken ct)
+        string testProject, OutputFormat format, FileInfo? outFile, string subdir, int timeout, bool open, bool force, bool verbose, CancellationToken ct)
     {
         Action<string>? vlog = verbose ? msg => Console.Error.WriteLine(msg) : null;
 
@@ -93,6 +95,11 @@ internal static class VerifyCommand
 
             if (outFile is not null)
             {
+                if (outFile.Exists && !force)
+                {
+                    Console.Error.WriteLine($"error: {outFile.FullName} already exists. Pass --force to overwrite.");
+                    return 1;
+                }
                 outFile.Directory?.Create();
                 await File.WriteAllTextAsync(outFile.FullName, rendered, ct);
                 Console.Error.WriteLine($"Wrote {format} report to {outFile.FullName}");

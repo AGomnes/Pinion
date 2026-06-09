@@ -37,7 +37,7 @@ internal sealed partial class CSharpDeterministicSynthesizer : IDisposable
     private readonly Action<string>? _log;
     private readonly bool _tryMsBuild;
     private readonly ConcurrentDictionary<string, Solution> _solutions = new(StringComparer.OrdinalIgnoreCase);
-    private readonly List<MSBuildWorkspace> _workspaces = new(); // kept alive while their solutions are in use
+    private readonly List<Workspace> _workspaces = new(); // MSBuild + source-scan workspaces, disposed on Dispose
 
     // Stubs the CURRENT Emit needs: interface FQN → (stub class name, the interface). Reset per Emit
     // (synthesis is sequential within a batch). A method that injects a service interface gets a real
@@ -133,7 +133,9 @@ internal sealed partial class CSharpDeterministicSynthesizer : IDisposable
             _log?.Invoke($"[generate] MSBuild unavailable ({ex.GetType().Name}); scanning source — types from referenced packages may not resolve.");
         }
 
-        return SourceScanLoader.Load(sourceRoot, _log);
+        var scanned = SourceScanLoader.Load(sourceRoot, _log);
+        _workspaces.Add(scanned.Workspace); // AdhocWorkspace — track so Dispose tears it down
+        return scanned;
     }
 
     private static async Task<Resolved?> ResolveAsync(Solution solution, CodeUnit unit, CancellationToken ct)
@@ -247,6 +249,12 @@ internal sealed partial class CSharpDeterministicSynthesizer : IDisposable
         AppendSampleRows(rows, method, mined, unit.Id, perParam);
 
         var sb = new System.Text.StringBuilder();
+        // Make the generated file self-consistent regardless of the host project's nullable setting:
+        //  - `enable annotations` keeps our own `object?` casts legal even when the host is <Nullable>disable</Nullable> (else CS8632).
+        //  - `disable warnings` lets a `null`/`default` edge-input candidate compile under <Nullable>enable</Nullable> +
+        //    warnings-as-errors (else CS8625/CS8600/CS8604 would error and silently drop the target).
+        sb.AppendLine("#nullable enable annotations");
+        sb.AppendLine("#nullable disable warnings");
         sb.AppendLine("using System;");
         sb.AppendLine("using System.Collections.Generic;");
         sb.AppendLine("using System.Threading.Tasks;");
@@ -351,7 +359,8 @@ internal sealed partial class CSharpDeterministicSynthesizer : IDisposable
                     break;
                 case RefKind.Ref:
                     string rv = $"__r{i}";
-                    pre.Add($"var {rv} = {row[i]};");
+                    // Explicit type, not `var` — a candidate of `null`/`default` can't infer a type (CS0815).
+                    pre.Add($"{p.Type.ToDisplayString(FullyQualified)} {rv} = {row[i]};");
                     args.Add($"ref {rv}");
                     display.Add(row[i]);
                     captures.Add((CaptureField(p.Name), rv));

@@ -23,10 +23,13 @@ public sealed class CSharpAdapter : ILanguageAdapter
 
     public string Language => "csharp";
 
-    /// <summary>One production method, with the context the enrichment passes need.</summary>
+    /// <summary>One production member (method, ctor, operator, accessor, or local function), with the
+    /// context the enrichment passes need. <see cref="Body"/> is the block/expression body, or null for a
+    /// bodyless member (abstract/extern/partial declaration).</summary>
     private sealed record RawMethod(
         IMethodSymbol Symbol,
-        MethodDeclarationSyntax Decl,
+        SyntaxNode Decl,
+        SyntaxNode? Body,
         SemanticModel Model,
         string Id,
         IReadOnlyList<string> Usings);
@@ -36,14 +39,19 @@ public sealed class CSharpAdapter : ILanguageAdapter
         string path = ResolveInputPath(projectOrSolutionPath);
 
         MSBuildWorkspace? msbuild = null;
+        Workspace? scanWorkspace = null;
         try
         {
             Solution solution = await LoadSolutionAsync(path, ct, w => msbuild = w).ConfigureAwait(false);
+            // The source-scan fallback returns an AdhocWorkspace that isn't `msbuild`; track it so it's
+            // disposed too (it was previously leaked for the process lifetime).
+            if (!ReferenceEquals(solution.Workspace, msbuild)) scanWorkspace = solution.Workspace;
             return await AnalyzeSolutionAsync(solution, ct).ConfigureAwait(false);
         }
         finally
         {
             msbuild?.Dispose();
+            scanWorkspace?.Dispose();
         }
     }
 
@@ -109,17 +117,70 @@ public sealed class CSharpAdapter : ILanguageAdapter
                 var root = await tree.GetRootAsync(ct).ConfigureAwait(false);
                 var usings = CSharpSyntaxFacts.FileUsings(root);
 
-                foreach (var decl in root.DescendantNodes().OfType<MethodDeclarationSyntax>())
-                {
-                    if (model.GetDeclaredSymbol(decl, ct) is not IMethodSymbol symbol) continue;
-                    raw.Add(new RawMethod(symbol, decl, model, RoslynSymbols.MethodId(symbol), usings));
-                }
+                foreach (var (symbol, decl, body) in BehaviorMembers(root, model, ct))
+                    raw.Add(new RawMethod(symbol, decl, body, model, RoslynSymbols.MethodId(symbol), usings));
             }
         }
 
-        _log?.Invoke($"[analyze] {raw.Count} production method(s) found.");
+        _log?.Invoke($"[analyze] {raw.Count} production member(s) found.");
         return raw;
     }
+
+    /// <summary>
+    /// Every behaviour-carrying member in a file — not just methods. Covers methods, constructors,
+    /// operators/conversions, local functions, and computed property/indexer accessors (those with a
+    /// body). Auto-property accessors carry no behaviour and are skipped; bodyless METHODS are kept as
+    /// complexity-1 units for parity with prior behaviour.
+    /// </summary>
+    internal static IEnumerable<(IMethodSymbol Symbol, SyntaxNode Decl, SyntaxNode? Body)> BehaviorMembers(
+        SyntaxNode root, SemanticModel model, CancellationToken ct)
+    {
+        foreach (var node in root.DescendantNodes())
+        {
+            ct.ThrowIfCancellationRequested();
+            switch (node)
+            {
+                // Method, constructor, operator, conversion operator, destructor.
+                case BaseMethodDeclarationSyntax bm:
+                    if (model.GetDeclaredSymbol(bm, ct) is IMethodSymbol ms)
+                        yield return (ms, bm, BodyOf(bm));
+                    break;
+
+                case LocalFunctionStatementSyntax lf when BodyOf(lf) is { } lb:
+                    if (model.GetDeclaredSymbol(lf, ct) is IMethodSymbol ls)
+                        yield return (ls, lf, lb);
+                    break;
+
+                // get/set/init/add/remove with a real body (computed accessor) — skips auto-properties.
+                case AccessorDeclarationSyntax a when BodyOf(a) is { } ab:
+                    if (model.GetDeclaredSymbol(a, ct) is IMethodSymbol asym)
+                        yield return (asym, a, ab);
+                    break;
+
+                // Expression-bodied property / indexer: `public int X => …;` (its getter is the unit).
+                case PropertyDeclarationSyntax p when p.ExpressionBody is { } pe:
+                    if (model.GetDeclaredSymbol(p, ct) is IPropertySymbol { GetMethod: { } pg })
+                        yield return (pg, p, pe);
+                    break;
+
+                case IndexerDeclarationSyntax ix when ix.ExpressionBody is { } ie:
+                    if (model.GetDeclaredSymbol(ix, ct) is IPropertySymbol { GetMethod: { } ig })
+                        yield return (ig, ix, ie);
+                    break;
+            }
+        }
+    }
+
+    /// <summary>The block or expression body of any member-like declaration, or null if it has none.</summary>
+    internal static SyntaxNode? BodyOf(SyntaxNode decl) => decl switch
+    {
+        BaseMethodDeclarationSyntax m => (SyntaxNode?)m.Body ?? m.ExpressionBody,
+        AccessorDeclarationSyntax a => (SyntaxNode?)a.Body ?? a.ExpressionBody,
+        LocalFunctionStatementSyntax lf => (SyntaxNode?)lf.Body ?? lf.ExpressionBody,
+        PropertyDeclarationSyntax p => p.ExpressionBody,
+        IndexerDeclarationSyntax ix => ix.ExpressionBody,
+        _ => null,
+    };
 
     /// <summary>Resolve calls in a method body into in-graph callee ids and a bag of referenced names.</summary>
     private static (HashSet<string> Callees, HashSet<string> RefNames) AnalyzeBody(
@@ -128,7 +189,7 @@ public sealed class CSharpAdapter : ILanguageAdapter
         var callees = new HashSet<string>(StringComparer.Ordinal);
         var refNames = new HashSet<string>(StringComparer.Ordinal);
 
-        SyntaxNode? body = (SyntaxNode?)m.Decl.Body ?? m.Decl.ExpressionBody;
+        SyntaxNode? body = m.Body;
         if (body is null) return (callees, refNames);
 
         foreach (var node in body.DescendantNodes())
@@ -160,7 +221,7 @@ public sealed class CSharpAdapter : ILanguageAdapter
         var lineSpan = decl.GetLocation().GetLineSpan();
         int startLine = lineSpan.StartLinePosition.Line + 1;
         int endLine = lineSpan.EndLinePosition.Line + 1;
-        SyntaxNode? body = (SyntaxNode?)decl.Body ?? decl.ExpressionBody;
+        SyntaxNode? body = m.Body;
 
         var parameters = symbol.Parameters
             .Select(p => new ParamInfo(p.Name, RoslynSymbols.ShortType(p.Type)))
@@ -184,7 +245,7 @@ public sealed class CSharpAdapter : ILanguageAdapter
             CSharpSyntaxFacts.AttributeNames(decl, typeDecl),
             lineSpan.Path);
 
-        var (seams, seamObstacles) = SeamAnalyzer.Analyze(symbol, decl, m.Model, ct);
+        var (seams, seamObstacles) = SeamAnalyzer.Analyze(symbol, body, m.Model, ct);
 
         return new CodeUnit(
             Id: m.Id,
@@ -232,10 +293,26 @@ public sealed class CSharpAdapter : ILanguageAdapter
 
                 foreach (var node in root.DescendantNodes())
                 {
-                    if (node is not (InvocationExpressionSyntax or ObjectCreationExpressionSyntax)) continue;
+                    switch (node)
+                    {
+                        // A call or construction protects the method/constructor it targets.
+                        case InvocationExpressionSyntax:
+                        case ObjectCreationExpressionSyntax:
+                            if (model.GetSymbolInfo(node, ct).Symbol is IMethodSymbol method)
+                                tested.Add(RoslynSymbols.MethodId(method));
+                            break;
 
-                    if (model.GetSymbolInfo(node, ct).Symbol is IMethodSymbol method)
-                        tested.Add(RoslynSymbols.MethodId(method));
+                        // Reading/writing a property or indexer in a test protects its accessor(s) — needed
+                        // now that computed properties/indexers are their own units (else they'd look untested).
+                        case MemberAccessExpressionSyntax:
+                        case ElementAccessExpressionSyntax:
+                            if (model.GetSymbolInfo(node, ct).Symbol is IPropertySymbol prop)
+                            {
+                                if (prop.GetMethod is { } getter) tested.Add(RoslynSymbols.MethodId(getter));
+                                if (prop.SetMethod is { } setter) tested.Add(RoslynSymbols.MethodId(setter));
+                            }
+                            break;
+                    }
                 }
             }
         }

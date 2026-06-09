@@ -99,7 +99,50 @@ public class DeterministicSynthesizerTests
     {
         string src = Synth("Bump");
         Assert.Contains("ref __r", src);
-        Assert.Contains("var __r", src);
+        Assert.Contains("__r0 = ", src);        // a declared, assigned temp
+        Assert.DoesNotContain("var __r", src);  // explicit type — a null/default candidate must still compile (CS0815)
+    }
+
+    [Fact]
+    public void Float_parameter_uses_float_literals_not_double()
+    {
+        string src = Synth("Scale");
+        Assert.Contains("1.5f", src);       // mined float boundary, f-suffixed
+        Assert.DoesNotContain("1.5d", src); // never a double literal where a float is required (CS0664)
+    }
+
+    [Fact]
+    public void Mined_string_constant_with_newline_is_escaped_not_raw()
+    {
+        string src = Synth("Multiline");
+        Assert.Contains("line1", src);                 // the mined constant is present...
+        Assert.DoesNotContain("line1\nline2", src);    // ...but never as a raw newline inside the literal (CS1010)
+    }
+
+    [Fact]
+    public void NonFinite_double_constant_emits_named_constant_not_invalid_literal()
+    {
+        string src = Synth("Classify");
+        Assert.Contains("double.PositiveInfinity", src); // a valid literal form
+        Assert.DoesNotContain("Infinityd", src);         // not the bare, non-compiling form
+    }
+
+    [Fact]
+    public void Required_member_type_gets_an_object_initializer()
+    {
+        string src = Synth("Ship");
+        Assert.Contains("new global::LegacyShop.Shipment()", src); // constructed...
+        Assert.Contains("Destination =", src);                     // ...with the required member set (else CS9035)
+    }
+
+    [Fact]
+    public void Generated_file_is_portable_across_host_nullable_settings()
+    {
+        // The file uses its own `object?` annotations AND feeds null candidates, so it must fix its own
+        // nullable context — else CS8632 under <Nullable>disable</Nullable> or CS8625 under enable+warnaserrors.
+        string src = Synth("TryDouble");
+        Assert.Contains("#nullable enable annotations", src);
+        Assert.Contains("#nullable disable warnings", src);
     }
 
     [Fact]

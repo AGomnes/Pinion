@@ -233,6 +233,7 @@ internal static class GenerateCommand
                 if (baseUrl == "https://api.anthropic.com" && !ModelCatalog.IsKnown(model))
                     Console.Error.WriteLine($"warning: '{model}' is not a model id Pinion recognizes. " +
                         $"Known: {string.Join(", ", ModelCatalog.Known)}. Proceeding — pass a correct id if this was a typo.");
+                WarnIfBaseUrlExposesKey(baseUrl);
                 llm = new AnthropicClient(apiKey, baseUrl);
             }
 
@@ -317,6 +318,28 @@ internal static class GenerateCommand
             if (verbose) Console.Error.WriteLine(ex);
             return 1;
         }
+    }
+
+    /// <summary>
+    /// The ANTHROPIC_API_KEY is attached to every request as the x-api-key header regardless of
+    /// --base-url. Make key egress visible: warn when the key would be sent anywhere other than Anthropic
+    /// (a proxy, a typo'd host, a local model), and again when it would travel in cleartext to a remote
+    /// host. Advisory only — http://localhost for an air-gapped local model is a supported use, so this
+    /// never blocks; it just ensures the user sees where their key is going.
+    /// </summary>
+    private static void WarnIfBaseUrlExposesKey(string baseUrl)
+    {
+        if (!Uri.TryCreate(baseUrl, UriKind.Absolute, out var uri))
+        {
+            Console.Error.WriteLine($"warning: --base-url '{baseUrl}' is not a valid absolute URL.");
+            return;
+        }
+        if (uri.Host.Equals("api.anthropic.com", StringComparison.OrdinalIgnoreCase)) return;
+
+        Console.Error.WriteLine($"warning: --base-url points at {uri.Host}, not api.anthropic.com — your " +
+            "ANTHROPIC_API_KEY will be sent there as the x-api-key header. Only use an endpoint you trust.");
+        if (!uri.Scheme.Equals(Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase) && !uri.IsLoopback)
+            Console.Error.WriteLine($"warning: --base-url uses {uri.Scheme} (not https) to a remote host — the API key would travel in cleartext.");
     }
 
     private static async Task<int> RunDeterministicAsync(

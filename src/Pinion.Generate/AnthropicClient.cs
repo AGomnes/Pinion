@@ -26,6 +26,10 @@ public sealed class AnthropicClient : ILlmClient, IDisposable
         WriteIndented = false,
     };
 
+    // Transient failures worth retrying: rate limit, gateway/overload, server errors. A 4xx other than
+    // 429 is the caller's fault and is not retried.
+    private static readonly int[] RetryableStatuses = { 429, 500, 502, 503, 529 };
+
     private readonly HttpClient _http;
     private readonly string _endpoint;
     private readonly string _apiKey;
@@ -38,6 +42,12 @@ public sealed class AnthropicClient : ILlmClient, IDisposable
         _http = http ?? new HttpClient { Timeout = TimeSpan.FromMinutes(5) };
         _ownsHttp = http is null;
     }
+
+    /// <summary>How many times a transient (429/5xx) failure is retried before giving up. (init for tests.)</summary>
+    internal int MaxRetries { get; init; } = 4;
+
+    /// <summary>Base of the exponential backoff (delay = Base·2^attempt, capped at 30s). Tests set 0 to avoid waits.</summary>
+    internal TimeSpan RetryBaseDelay { get; init; } = TimeSpan.FromSeconds(1);
 
     public string Name => "anthropic";
 
@@ -65,22 +75,52 @@ public sealed class AnthropicClient : ILlmClient, IDisposable
 
     public async Task<LlmResponse> CompleteAsync(LlmRequest request, CancellationToken ct)
     {
-        using var httpReq = new HttpRequestMessage(HttpMethod.Post, _endpoint)
+        string body = BuildRequestJson(request);
+
+        for (int attempt = 0; ; attempt++)
         {
-            Content = new StringContent(BuildRequestJson(request), Encoding.UTF8, "application/json"),
-        };
-        httpReq.Headers.TryAddWithoutValidation("x-api-key", _apiKey);
-        httpReq.Headers.TryAddWithoutValidation("anthropic-version", AnthropicVersion);
-        httpReq.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+            using var httpReq = new HttpRequestMessage(HttpMethod.Post, _endpoint)
+            {
+                Content = new StringContent(body, Encoding.UTF8, "application/json"),
+            };
+            httpReq.Headers.TryAddWithoutValidation("x-api-key", _apiKey);
+            httpReq.Headers.TryAddWithoutValidation("anthropic-version", AnthropicVersion);
+            httpReq.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
 
-        using var resp = await _http.SendAsync(httpReq, ct).ConfigureAwait(false);
-        string responseBody = await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+            using var resp = await _http.SendAsync(httpReq, ct).ConfigureAwait(false);
+            string responseBody = await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
 
-        if (!resp.IsSuccessStatusCode)
-            throw new LlmApiException((int)resp.StatusCode, $"Anthropic API {(int)resp.StatusCode}: {Truncate(responseBody, 500)}");
+            if (resp.IsSuccessStatusCode)
+                return Parse(responseBody);
 
-        return Parse(responseBody);
+            int status = (int)resp.StatusCode;
+            // Retry transient failures (rate limit, overload, gateway/5xx) with backoff, honoring
+            // Retry-After. A single 429 used to abort the whole batch; now it backs off and retries.
+            if (attempt < MaxRetries && Array.IndexOf(RetryableStatuses, status) >= 0)
+            {
+                await Task.Delay(RetryDelay(resp, attempt), ct).ConfigureAwait(false);
+                continue;
+            }
+
+            throw new LlmApiException(status, $"Anthropic API {status}: {Truncate(responseBody, 500)}");
+        }
     }
+
+    /// <summary>Honor the server's Retry-After when present, else exponential backoff + jitter, capped at 30s.</summary>
+    private TimeSpan RetryDelay(HttpResponseMessage resp, int attempt)
+    {
+        if (resp.Headers.RetryAfter is { } ra)
+        {
+            if (ra.Delta is { } d && d > TimeSpan.Zero) return Cap(d);
+            if (ra.Date is { } when && when - DateTimeOffset.UtcNow is { Ticks: > 0 } until) return Cap(until);
+        }
+        if (RetryBaseDelay <= TimeSpan.Zero) return TimeSpan.Zero;
+        double seconds = RetryBaseDelay.TotalSeconds * Math.Pow(2, attempt);
+        double jitter = Random.Shared.NextDouble() * 0.5;
+        return Cap(TimeSpan.FromSeconds(seconds + jitter));
+    }
+
+    private static TimeSpan Cap(TimeSpan t) => t > TimeSpan.FromSeconds(30) ? TimeSpan.FromSeconds(30) : t;
 
     internal static LlmResponse Parse(string responseBody)
     {

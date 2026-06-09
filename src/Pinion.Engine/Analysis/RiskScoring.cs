@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using Pinion.Engine.Model;
 
 namespace Pinion.Engine.Analysis;
@@ -43,7 +44,13 @@ public sealed record RiskComponent(string Name, double Weight, double Normalized
 }
 
 /// <summary>A unit's total risk plus the fully itemized breakdown that produced it.</summary>
-public sealed record RiskScore(double Total, IReadOnlyList<RiskComponent> Components);
+public sealed record RiskScore(double Total, IReadOnlyList<RiskComponent> Components)
+{
+    /// <summary>The unrounded total. Threshold comparisons use this so a unit near a boundary (e.g. 3.449
+    /// vs 3.450) isn't moved in/out of "high-risk" purely by display rounding. Not serialized.</summary>
+    [JsonIgnore]
+    public double RawTotal { get; init; }
+}
 
 /// <summary>Computes the transparent, explainable risk score for a <see cref="CodeUnit"/>.</summary>
 public static class RiskScorer
@@ -53,9 +60,12 @@ public static class RiskScorer
         weights ??= RiskWeights.Default;
         norm ??= RiskNormalization.Default;
 
+        // Any sensitive tag is a strong signal: a single money/auth tag (the flagship case) already carries
+        // most of the domain weight (0.75), and a second distinct concern saturates it. (Previously a lone
+        // tag got only 0.5, under-ranking exactly the high-stakes code the product targets.)
         double domainSensitivity = unit.DomainTags.Count == 0
             ? 0
-            : Math.Min(1.0, unit.DomainTags.Count / 2.0); // any sensitive tag matters; two+ saturates
+            : Math.Min(1.0, 0.5 + 0.25 * unit.DomainTags.Count);
 
         bool hasLandmine = unit.MigrationLandmines.Count > 0;
 
@@ -76,7 +86,7 @@ public static class RiskScorer
         };
 
         double total = components.Sum(c => c.Contribution);
-        return new RiskScore(Math.Round(total, 1), components);
+        return new RiskScore(Math.Round(total, 1), components) { RawTotal = total };
     }
 
     private static double Norm(double value, double cap) => cap <= 0 ? 0 : Math.Min(1.0, value / cap);

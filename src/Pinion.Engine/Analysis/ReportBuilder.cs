@@ -44,13 +44,15 @@ public static class ReportBuilder
 
         int tested = units.Count(u => u.HasTests);
 
+        // Compare on the unrounded total (RawTotal) so a unit sitting exactly on a rounding boundary
+        // isn't included/excluded by display rounding alone.
         int highRiskUnprotected = scored.Count(s =>
-            !s.Unit.HasTests && s.Score.Total >= options.HighRiskThreshold);
+            !s.Unit.HasTests && s.Score.RawTotal >= options.HighRiskThreshold);
 
         // Of the high-risk, unprotected units, how many hard-wire their dependencies and so need a
         // seam introduced before they can be locked — the testability friction in the migration.
         int seamsToIntroduce = scored.Count(s =>
-            !s.Unit.HasTests && s.Score.Total >= options.HighRiskThreshold
+            !s.Unit.HasTests && s.Score.RawTotal >= options.HighRiskThreshold
             && s.Unit.Seamability == Seamability.NeedsSeam);
 
         var landmineCounts = units

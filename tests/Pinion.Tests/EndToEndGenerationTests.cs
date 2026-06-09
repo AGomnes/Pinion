@@ -84,4 +84,41 @@ public class EndToEndGenerationTests
             if (Directory.Exists(outDir)) { try { Directory.Delete(outDir, recursive: true); } catch { } }
         }
     }
+
+    [Fact]
+    public async Task Tier1_regression_shapes_compile_run_and_capture()
+    {
+        string sampleRoot = Path.Combine(RepoRoot(), "samples", "LegacyShop");
+        string hardCases = Path.Combine(sampleRoot, "src", "LegacyShop", "HardCases.cs");
+        string testProject = Path.Combine(sampleRoot, "tests", "LegacyShop.Tests", "LegacyShop.Tests.csproj");
+        string outDir = Path.Combine(Path.GetDirectoryName(testProject)!, "PinionCharacterization");
+
+        // Five shapes that each used to emit a characterization test that did NOT compile (so the target
+        // was silently dropped): float params, a mined string with a newline, a non-finite double constant,
+        // a ref-string with a null candidate, and a parameter type with a `required` member. All must now
+        // compile, run, and capture a golden master in a single batch build/run.
+        var units = new[]
+        {
+            UnitAt(hardCases, "HardCases.Scale", "Scale"),
+            UnitAt(hardCases, "HardCases.Multiline", "Multiline"),
+            UnitAt(hardCases, "HardCases.Classify", "Classify"),
+            UnitAt(hardCases, "HardCases.Relabel", "Relabel"),
+            UnitAt(hardCases, "HardCases.Ship", "Ship"),
+        };
+
+        if (Directory.Exists(outDir)) Directory.Delete(outDir, recursive: true);
+        try
+        {
+            using var gen = new CSharpTestGenerator();
+            gen.ConfigureGeneration(testProject);
+            var results = await gen.GenerateDeterministicBatchAsync(units, sampleRoot, default);
+
+            foreach (var r in results)
+                Assert.True(r.Success, $"{r.Unit.DisplayName} did not characterize: {string.Join(" | ", r.Diagnostics)}");
+        }
+        finally
+        {
+            if (Directory.Exists(outDir)) { try { Directory.Delete(outDir, recursive: true); } catch { } }
+        }
+    }
 }

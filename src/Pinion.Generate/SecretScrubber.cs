@@ -19,8 +19,11 @@ public static class SecretScrubber
         RegexOptions.IgnoreCase | RegexOptions.Compiled | RegexOptions.CultureInvariant;
 
     // 1. Assignments to sensitively-named identifiers: pwd = "...", apiKey: '...', "token": "..."
+    //    The value group is [\s\S]*? (not .*?) so a quoted secret spanning multiple lines — a PEM in a
+    //    verbatim/heredoc string, a wrapped token — is still redacted; '.' alone would stop at the newline
+    //    and leak the rest. Lazy + closing-quote anchored, so it stays O(n).
     private static readonly Regex Assignment = new(
-        @"(?<key>(?:password|passwd|pwd|secret|api[_-]?key|access[_-]?key|auth[_-]?token|token|client[_-]?secret|connection[_-]?string|conn[_-]?str|private[_-]?key)\s*[""']?\s*[:=]\s*)(?<q>[""'])(?<val>.*?)(\k<q>)",
+        @"(?<key>(?:password|passwd|pwd|secret|api[_-]?key|access[_-]?key|auth[_-]?token|token|client[_-]?secret|connection[_-]?string|conn[_-]?str|private[_-]?key)\s*[""']?\s*[:=]\s*)(?<q>[""'])(?<val>[\s\S]*?)(\k<q>)",
         Opts);
 
     // 2. Connection-string credential fields: Password=...;  Pwd=...  (unquoted values only —

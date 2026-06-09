@@ -14,6 +14,7 @@ internal sealed partial class CSharpDeterministicSynthesizer
     {
         SpecialType.System_Int32, SpecialType.System_Int64,
         SpecialType.System_Decimal, SpecialType.System_Double,
+        SpecialType.System_Single,
     };
 
     /// <summary>
@@ -59,6 +60,11 @@ internal sealed partial class CSharpDeterministicSynthesizer
                 var (lo, hi) = DoubleRange(mined);
                 return Gen.Double[lo, hi].Select(v => FmtDouble(Math.Round(v, 2)));
             }
+            case SpecialType.System_Single:
+            {
+                var (lo, hi) = DoubleRange(mined);
+                return Gen.Double[lo, hi].Select(v => FmtFloat(Math.Round(v, 2)));
+            }
             case SpecialType.System_Int32 or SpecialType.System_Int64:
             {
                 var (lo, hi) = IntRange(mined);
@@ -97,7 +103,8 @@ internal sealed partial class CSharpDeterministicSynthesizer
 
     private static (double, double) DoubleRange(Mined mined)
     {
-        double mx = Math.Min(mined.Doubles.DefaultIfEmpty(0).Max(), 1_000_000);
+        // Exclude NaN/±Infinity: they poison Max (Math.Max(x, NaN) == NaN) and can't bound a sample range.
+        double mx = Math.Min(mined.Doubles.Where(double.IsFinite).DefaultIfEmpty(0).Max(), 1_000_000);
         return (-10, Math.Max(10_000, mx * 2 + 100));
     }
 
@@ -131,9 +138,14 @@ internal sealed partial class CSharpDeterministicSynthesizer
                 values.Add("0m"); values.Add("1m"); values.Add("-1m");
                 break;
 
-            case SpecialType.System_Double or SpecialType.System_Single:
+            case SpecialType.System_Double:
                 foreach (var v in mined.Doubles) AddNeighbours(values, v, FmtDouble);
                 values.Add("0d"); values.Add("1d");
+                break;
+
+            case SpecialType.System_Single:
+                foreach (var v in mined.Doubles) AddNeighbours(values, v, FmtFloat);
+                values.Add("0f"); values.Add("1f");
                 break;
 
             case SpecialType.System_Boolean:
@@ -188,12 +200,15 @@ internal sealed partial class CSharpDeterministicSynthesizer
         string fq = type.ToDisplayString(FullyQualified);
         var ctor = AccessibleCtor(type);
         if (ctor is null) return new() { $"default({fq})!" };
-        if (ctor.Parameters.Length == 0) return new() { $"new {fq}()" };
+        // Object initializer for any `required` member the ctor doesn't set (else CS9035). Suffixed to
+        // every `new T(...)` below so the constructed value compiles regardless of the ctor chosen.
+        string init = RequiredInitializer(type, ctor, mined);
+        if (ctor.Parameters.Length == 0) return new() { $"new {fq}(){init}" };
 
         var perArg = ctor.Parameters.Select(p => CtorArgCandidates(p.Type, mined)).ToList();
         var baseArgs = perArg.Select(c => c[0]).ToList();
 
-        var variants = new List<string> { $"new {fq}({string.Join(", ", baseArgs)})" };
+        var variants = new List<string> { $"new {fq}({string.Join(", ", baseArgs)}){init}" };
         var seen = new HashSet<string> { string.Join("|", baseArgs) };
         // Round-robin across the ctor args (not first-param-first) so EVERY field gets varied within
         // the budget — otherwise one many-valued field (e.g. a string Sku) starves the others.
@@ -205,12 +220,49 @@ internal sealed partial class CSharpDeterministicSynthesizer
                 if (j >= perArg[i].Count) continue;
                 progressed = true;
                 var args = new List<string>(baseArgs) { [i] = perArg[i][j] };
-                if (seen.Add(string.Join("|", args))) variants.Add($"new {fq}({string.Join(", ", args)})");
+                if (seen.Add(string.Join("|", args))) variants.Add($"new {fq}({string.Join(", ", args)}){init}");
             }
             if (!progressed) break;
         }
         return variants;
     }
+
+    /// <summary>
+    /// An object initializer covering every <c>required</c> member the constructor doesn't already set,
+    /// e.g. <c>{ Name = "…", Count = 1 }</c>. Empty when the type has no required members or the chosen
+    /// ctor is annotated <c>[SetsRequiredMembers]</c>. Without it, <c>new T(…)</c> on a type with required
+    /// members is a CS9035 compile error and the whole generated test is dropped.
+    /// </summary>
+    private string RequiredInitializer(INamedTypeSymbol type, IMethodSymbol ctor, Mined mined)
+    {
+        if (ctor.GetAttributes().Any(a => a.AttributeClass?.Name == "SetsRequiredMembersAttribute"))
+            return "";
+        var required = RequiredMembers(type);
+        if (required.Count == 0) return "";
+        var sets = required.Select(m => $"{m.Name} = {CtorArgCandidates(MemberType(m), mined)[0]}");
+        return " { " + string.Join(", ", sets) + " }";
+    }
+
+    /// <summary>The public <c>required</c> properties/fields of a type and its bases (each needs a value
+    /// in an object initializer). De-duplicated by name so an overriding member isn't set twice.</summary>
+    private static List<ISymbol> RequiredMembers(INamedTypeSymbol type)
+    {
+        var list = new List<ISymbol>();
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        for (INamedTypeSymbol? t = type; t is not null; t = t.BaseType)
+            foreach (var m in t.GetMembers())
+                if (m is (IPropertySymbol { IsRequired: true } or IFieldSymbol { IsRequired: true })
+                    && m.DeclaredAccessibility == Accessibility.Public && seen.Add(m.Name))
+                    list.Add(m);
+        return list;
+    }
+
+    private static ITypeSymbol MemberType(ISymbol m) => m switch
+    {
+        IPropertySymbol p => p.Type,
+        IFieldSymbol f => f.Type,
+        _ => throw new InvalidOperationException("required member must be a property or field"),
+    };
 
     /// <summary>
     /// Constructor-argument candidates, ordered NON-degenerate-first (a positive/rich value, so the
@@ -239,10 +291,15 @@ internal sealed partial class CSharpDeterministicSynthesizer
                 foreach (var i in mined.Ints) v.Add(FmtDecimal(i));
                 v.Add("0m"); v.Add("-1m");
                 break;
-            case SpecialType.System_Double or SpecialType.System_Single:
+            case SpecialType.System_Double:
                 v.Add("1d");
                 foreach (var d in mined.Doubles) v.Add(FmtDouble(d));
                 v.Add("0d");
+                break;
+            case SpecialType.System_Single:
+                v.Add("1f");
+                foreach (var d in mined.Doubles) v.Add(FmtFloat(d));
+                v.Add("0f");
                 break;
             case SpecialType.System_Boolean: v.Add("true"); v.Add("false"); break;
             case SpecialType.System_Char: v.Add("'a'"); v.Add("'0'"); break;
@@ -334,7 +391,23 @@ internal sealed partial class CSharpDeterministicSynthesizer
             .Take(MaxCandidatesPerParam).ToList();
 
     private static string FmtDecimal(decimal v) => v.ToString(CultureInfo.InvariantCulture) + "m";
-    private static string FmtDouble(double v) => v.ToString("R", CultureInfo.InvariantCulture) + "d";
+
+    // NaN/±Infinity have no numeric literal form ("NaNd" won't compile) — emit the named constant instead.
+    private static string FmtDouble(double v) =>
+        double.IsNaN(v) ? "double.NaN"
+        : double.IsPositiveInfinity(v) ? "double.PositiveInfinity"
+        : double.IsNegativeInfinity(v) ? "double.NegativeInfinity"
+        : v.ToString("R", CultureInfo.InvariantCulture) + "d";
+
+    // A `double` literal won't implicitly convert to `float` (CS0664), so float inputs need the `f` suffix.
+    private static string FmtFloat(double v)
+    {
+        float f = (float)v;
+        return float.IsNaN(f) ? "float.NaN"
+            : float.IsPositiveInfinity(f) ? "float.PositiveInfinity"
+            : float.IsNegativeInfinity(f) ? "float.NegativeInfinity"
+            : f.ToString("R", CultureInfo.InvariantCulture) + "f";
+    }
 
     private string BuildSut(INamedTypeSymbol type)
     {
@@ -343,7 +416,7 @@ internal sealed partial class CSharpDeterministicSynthesizer
         if (ctor is not null)
         {
             var args = ctor.Parameters.Select(p => BuildValue(p.Type, 1));
-            return $"new {fq}({string.Join(", ", args)})";
+            return $"new {fq}({string.Join(", ", args)}){RequiredInitializer(type, ctor, new Mined())}";
         }
 
         // No public constructor — the idiomatic real-world case for value/façade types (NodaTime's
@@ -530,7 +603,8 @@ internal sealed partial class CSharpDeterministicSynthesizer
             SpecialType.System_Int32 or SpecialType.System_Int64 or SpecialType.System_Int16
                 or SpecialType.System_Byte => "0",
             SpecialType.System_Decimal => "0m",
-            SpecialType.System_Double or SpecialType.System_Single => "0d",
+            SpecialType.System_Double => "0d",
+            SpecialType.System_Single => "0f",
             SpecialType.System_Boolean => "true",
             SpecialType.System_String => "\"\"",
             SpecialType.System_Char => "'a'",
@@ -550,7 +624,7 @@ internal sealed partial class CSharpDeterministicSynthesizer
             if (type is INamedTypeSymbol named && AccessibleCtor(named) is { } ctor)
             {
                 var args = ctor.Parameters.Select(p => BuildValue(p.Type, depth + 1));
-                return $"new {named.ToDisplayString(FullyQualified)}({string.Join(", ", args)})";
+                return $"new {named.ToDisplayString(FullyQualified)}({string.Join(", ", args)}){RequiredInitializer(named, ctor, new Mined())}";
             }
         }
 
@@ -591,6 +665,16 @@ internal sealed partial class CSharpDeterministicSynthesizer
     }
 
     private static string SafeId(string s) => System.Text.RegularExpressions.Regex.Replace(s, @"\W", "_");
-    private static string Escape(string s) => s.Replace("\\", "\\\\").Replace("\"", "\\\"");
-    private static string Quote(string s) => "\"" + Escape(s) + "\"";
+
+    /// <summary>A fully-escaped C# string literal (with quotes) for <paramref name="s"/>. Uses Roslyn's
+    /// formatter so newlines, tabs, NUL, and Unicode line separators (U+0085/2028/2029) — all illegal raw
+    /// in a regular string literal — are escaped, not emitted verbatim (which would be CS1010).</summary>
+    private static string Quote(string s) => Microsoft.CodeAnalysis.CSharp.SymbolDisplay.FormatLiteral(s, quote: true);
+
+    /// <summary>Escapes a string for embedding inside an existing <c>"…"</c> literal (the Input/description
+    /// text). Display tokens are already valid C# literals via <see cref="Quote"/>, but harden against
+    /// backslash, quote, and raw control chars so the description can never break the emitted file.</summary>
+    private static string Escape(string s) => s
+        .Replace("\\", "\\\\").Replace("\"", "\\\"")
+        .Replace("\r", "\\r").Replace("\n", "\\n").Replace("\t", "\\t");
 }

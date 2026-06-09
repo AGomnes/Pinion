@@ -23,4 +23,20 @@ catch (Exception ex)
     Console.Error.WriteLine($"warning: MSBuild not available ({ex.Message.Split('\n')[0].Trim()}); analyzing source directly.");
 }
 
-return await PinionCli.BuildRootCommand().Parse(args).InvokeAsync();
+// Top-level safety net: a throw that escapes a command handler (binding, MSBuild edge, I/O) must not
+// surface as a raw stack trace with an undefined exit code — `verify` uses the exit code as a CI gate,
+// so an unexpected crash must be a clean, distinct non-zero (1), never confused with "behavior changed".
+try
+{
+    return await PinionCli.BuildRootCommand().Parse(args).InvokeAsync();
+}
+catch (OperationCanceledException)
+{
+    Console.Error.WriteLine("Cancelled.");
+    return 130;
+}
+catch (Exception ex)
+{
+    Console.Error.WriteLine($"error: {ex.Message}");
+    return 1;
+}

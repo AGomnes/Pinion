@@ -15,7 +15,9 @@ internal static class RoslynSymbols
         typeQualificationStyle: SymbolDisplayTypeQualificationStyle.NameAndContainingTypesAndNamespaces,
         genericsOptions: SymbolDisplayGenericsOptions.IncludeTypeParameters,
         memberOptions: SymbolDisplayMemberOptions.IncludeParameters | SymbolDisplayMemberOptions.IncludeContainingType,
-        parameterOptions: SymbolDisplayParameterOptions.IncludeType,
+        // IncludeParamsRefOut so overloads that differ only by ref/out/in (Foo(int) vs Foo(ref int)) get
+        // distinct ids and aren't collapsed into one analyzed unit.
+        parameterOptions: SymbolDisplayParameterOptions.IncludeType | SymbolDisplayParameterOptions.IncludeParamsRefOut,
         miscellaneousOptions: SymbolDisplayMiscellaneousOptions.UseSpecialTypes);
 
     /// <summary>Type-minimal display, e.g. "decimal", "List&lt;string&gt;".</summary>
@@ -38,21 +40,52 @@ internal static class RoslynSymbols
 
     public static string Signature(IMethodSymbol method) => method.ToDisplayString(SignatureFormat);
 
-    public static string MethodId(IMethodSymbol method) =>
-        method.OriginalDefinition.ToDisplayString(IdFormat);
+    public static string MethodId(IMethodSymbol method)
+    {
+        // Local functions aren't type members, so two same-named locals in different methods would share
+        // an id. Qualify by the enclosing member (recursively for nested locals) to keep ids unique+stable.
+        if (method.MethodKind == MethodKind.LocalFunction && method.ContainingSymbol is IMethodSymbol outer)
+        {
+            string pars = string.Join(", ", method.Parameters.Select(p => RefPrefix(p.RefKind) + ShortType(p.Type)));
+            return $"{MethodId(outer)}/{method.Name}({pars})";
+        }
+        return method.OriginalDefinition.ToDisplayString(IdFormat);
+    }
+
+    private static string RefPrefix(RefKind kind) => kind switch
+    {
+        RefKind.Ref => "ref ",
+        RefKind.Out => "out ",
+        RefKind.In => "in ",
+        _ => "",
+    };
 
     public static string TypeId(INamedTypeSymbol type) =>
         type.OriginalDefinition.ToDisplayString(IdFormat);
 
     public static string ShortType(ITypeSymbol type) => type.ToDisplayString(ShortTypeFormat);
 
-    /// <summary>"InvoiceService.CalculateVat" — friendly enough for report rows.</summary>
+    /// <summary>"InvoiceService.CalculateVat", "Cart.ctor", "Order.Total.get" — friendly enough for report rows.</summary>
     public static string DisplayName(IMethodSymbol method)
     {
         string typeName = method.ContainingType?.Name ?? "";
-        string name = method.MethodKind == MethodKind.Constructor ? "ctor" : method.Name;
+        string name = MemberLabel(method);
         return string.IsNullOrEmpty(typeName) ? name : $"{typeName}.{name}";
     }
+
+    private static string MemberLabel(IMethodSymbol method) => method.MethodKind switch
+    {
+        MethodKind.Constructor or MethodKind.StaticConstructor => "ctor",
+        MethodKind.Destructor => "~dtor",
+        MethodKind.PropertyGet => AssociatedName(method) + ".get",
+        MethodKind.PropertySet => AssociatedName(method) + (method.IsInitOnly ? ".init" : ".set"),
+        MethodKind.EventAdd => AssociatedName(method) + ".add",
+        MethodKind.EventRemove => AssociatedName(method) + ".remove",
+        MethodKind.LocalFunction => method.Name + " (local)",
+        _ => method.Name, // ordinary methods, user-defined operators (op_Addition), conversions
+    };
+
+    private static string AssociatedName(IMethodSymbol accessor) => accessor.AssociatedSymbol?.Name ?? accessor.Name;
 
     /// <summary>
     /// A method is a public entry point when it (and the type that exposes it) are

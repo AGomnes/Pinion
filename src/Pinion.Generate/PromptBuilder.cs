@@ -61,13 +61,32 @@ public static class PromptBuilder
         return sb.ToString();
     }
 
-    /// <summary>The repair turn: hand the compiler/runtime errors back and ask for a fix.</summary>
+    /// <summary>
+    /// The repair turn: hand the failure back and ask for a fix. Only COMPILER errors (which reference
+    /// code, and which the model needs to fix the file) are echoed verbatim. Runtime output is NOT sent
+    /// back — a captured return value or exception message can contain real data from executing the
+    /// target, and this is an outbound channel; for a pure runtime failure we describe the shape only.
+    /// </summary>
     public static string Repair(IReadOnlyList<string> diagnostics)
     {
+        var compilerErrors = diagnostics
+            .Where(d => d.Contains("error CS", StringComparison.Ordinal))
+            .Take(25)
+            .ToList();
+
         var sb = new StringBuilder();
         sb.AppendLine("The test you produced did not compile/run. Fix it and output the full corrected C# file (only the code).");
-        sb.AppendLine("Errors:");
-        foreach (var d in diagnostics.Take(25)) sb.AppendLine($"  {d}");
+        if (compilerErrors.Count > 0)
+        {
+            sb.AppendLine("Compiler errors:");
+            foreach (var d in compilerErrors) sb.AppendLine($"  {d}");
+        }
+        else
+        {
+            sb.AppendLine("It compiled but failed at runtime (an unexpected exception, or a snapshot it could " +
+                "not capture). Ensure every call is wrapped in try/catch and the outcome is recorded as text — " +
+                "never assert an expected value. (Runtime output is withheld here as it can contain real data.)");
+        }
         return sb.ToString();
     }
 }

@@ -56,7 +56,7 @@ internal static class SeamAnalyzer
     };
 
     public static (IReadOnlyList<string> Seams, IReadOnlyList<string> Obstacles) Analyze(
-        IMethodSymbol method, MethodDeclarationSyntax decl, SemanticModel model, CancellationToken ct)
+        IMethodSymbol method, SyntaxNode? body, SemanticModel model, CancellationToken ct)
     {
         var seams = new SortedSet<string>(StringComparer.Ordinal);
         var obstacles = new SortedSet<string>(StringComparer.Ordinal);
@@ -76,7 +76,6 @@ internal static class SeamAnalyzer
                             seams.Add(RoslynSymbols.ShortType(p.Type));
 
         // Obstacles: ambient access and external-resource use inside the body.
-        SyntaxNode? body = (SyntaxNode?)decl.Body ?? decl.ExpressionBody;
         if (body is not null)
         {
             foreach (var node in body.DescendantNodes())

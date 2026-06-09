@@ -25,7 +25,8 @@ public class SeamAnalyzerTests
         var decl = tree.GetRoot().DescendantNodes().OfType<MethodDeclarationSyntax>()
             .First(d => d.Identifier.Text == method);
         var symbol = (IMethodSymbol)model.GetDeclaredSymbol(decl)!;
-        return SeamAnalyzer.Analyze(symbol, decl, model, default);
+        SyntaxNode? body = (SyntaxNode?)decl.Body ?? decl.ExpressionBody;
+        return SeamAnalyzer.Analyze(symbol, body, model, default);
     }
 
     [Fact]

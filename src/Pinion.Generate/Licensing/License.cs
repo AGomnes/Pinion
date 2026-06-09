@@ -76,6 +76,14 @@ internal static class LicenseToken
         if (claims.Expires < DateTimeOffset.UtcNow)
             return new LicenseStatus(false, $"license expired {claims.Expires:yyyy-MM-dd}", claims);
 
+        // Sanity-check the claim window: a non-positive validity span or a future issue date can only be a
+        // malformed or forged token. (After the expired check, so a normally-issued, now-expired token
+        // still reads "expired" rather than this.)
+        if (claims.Expires <= claims.IssuedAt)
+            return new LicenseStatus(false, "license validity window is non-positive (exp ≤ iat) — malformed or forged", claims);
+        if (claims.IssuedAt > DateTimeOffset.UtcNow.AddDays(1))
+            return new LicenseStatus(false, "license issue date is in the future — clock skew or forged", claims);
+
         // Node-locking: a bound license only verifies on its machine. Unbound (mid == null)
         // licenses work anywhere — that's a deliberate vendor choice (site/floating license).
         if (!string.IsNullOrEmpty(claims.Machine)

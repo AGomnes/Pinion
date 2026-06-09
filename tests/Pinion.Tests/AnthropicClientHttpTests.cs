@@ -39,19 +39,46 @@ public class AnthropicClientHttpTests
     }
 
     [Theory]
-    [InlineData(429, true)]   // rate limit → abort the run
-    [InlineData(401, true)]   // auth → abort
+    [InlineData(429, true)]   // rate limit → (retried, then) abort the run
+    [InlineData(401, true)]   // auth → abort immediately (not retryable)
     [InlineData(500, false)]  // transient server error → don't abort
     public async Task Error_status_becomes_LlmApiException_with_correct_abort_flag(int status, bool shouldAbort)
     {
         using var server = new MockAnthropicServer();
-        server.EnqueueError(status, message: "nope");
+        // Enough errors to exhaust retries for the retryable statuses (429/500); 401 throws on attempt 1.
+        for (int i = 0; i < 6; i++) server.EnqueueError(status, message: "nope");
 
-        using var client = new AnthropicClient("k", server.BaseUrl);
+        using var client = new AnthropicClient("k", server.BaseUrl) { MaxRetries = 2, RetryBaseDelay = TimeSpan.Zero };
 
         var ex = await Assert.ThrowsAsync<LlmApiException>(() => client.CompleteAsync(Req(), default));
         Assert.Equal(status, ex.StatusCode);
         Assert.Equal(shouldAbort, ex.ShouldAbortRun);
+    }
+
+    [Fact]
+    public async Task Transient_error_is_retried_then_succeeds()
+    {
+        using var server = new MockAnthropicServer();
+        server.EnqueueError(503);                                  // transient overload/gateway
+        server.EnqueueMessage("```csharp\nclass T {}\n```");       // then a normal success
+
+        using var client = new AnthropicClient("k", server.BaseUrl) { RetryBaseDelay = TimeSpan.Zero };
+        var resp = await client.CompleteAsync(Req(), default);
+
+        Assert.Contains("class T {}", resp.Text);
+        Assert.Equal(2, server.Requests.Count);                   // one retry, not an abort
+    }
+
+    [Fact]
+    public async Task Non_retryable_4xx_aborts_on_the_first_attempt()
+    {
+        using var server = new MockAnthropicServer();
+        server.EnqueueError(400, message: "bad request");
+
+        using var client = new AnthropicClient("k", server.BaseUrl) { RetryBaseDelay = TimeSpan.Zero };
+        await Assert.ThrowsAsync<LlmApiException>(() => client.CompleteAsync(Req(), default));
+
+        Assert.Single(server.Requests);                            // not retried
     }
 
     [Fact]

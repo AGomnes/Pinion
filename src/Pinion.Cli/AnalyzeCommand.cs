@@ -57,6 +57,11 @@ internal static class AnalyzeCommand
             Description = "Open the rendered report in the default browser (a static file — no server is started).",
         };
 
+        var forceOption = new Option<bool>("--force")
+        {
+            Description = "Overwrite the --out file if it already exists.",
+        };
+
         var verboseOption = new Option<bool>("--verbose", "-v")
         {
             Description = "Print Roslyn/MSBuild diagnostics to stderr.",
@@ -64,7 +69,7 @@ internal static class AnalyzeCommand
 
         var cmd = new Command("analyze", "Scan a codebase and produce a Migration Readiness Report.")
         {
-            pathArg, formatOption, outOption, topOption, thresholdOption, coverageOption, mutationReportOption, openOption, verboseOption,
+            pathArg, formatOption, outOption, topOption, thresholdOption, coverageOption, mutationReportOption, openOption, forceOption, verboseOption,
         };
 
         cmd.SetAction(async (parse, ct) =>
@@ -77,9 +82,10 @@ internal static class AnalyzeCommand
             bool coverage = parse.GetValue(coverageOption);
             var mutationReport = parse.GetValue(mutationReportOption);
             bool open = parse.GetValue(openOption);
+            bool force = parse.GetValue(forceOption);
             bool verbose = parse.GetValue(verboseOption);
 
-            return await RunAsync(path, format, outFile, top, threshold, coverage, mutationReport, open, verbose, ct);
+            return await RunAsync(path, format, outFile, top, threshold, coverage, mutationReport, open, force, verbose, ct);
         });
 
         return cmd;
@@ -87,7 +93,7 @@ internal static class AnalyzeCommand
 
     private static async Task<int> RunAsync(
         string path, OutputFormat format, FileInfo? outFile,
-        int top, double threshold, bool collectCoverage, FileInfo? mutationReport, bool open, bool verbose, CancellationToken ct)
+        int top, double threshold, bool collectCoverage, FileInfo? mutationReport, bool open, bool force, bool verbose, CancellationToken ct)
     {
         Action<string>? log = verbose ? msg => Console.Error.WriteLine(msg) : null;
 
@@ -130,6 +136,11 @@ internal static class AnalyzeCommand
 
             if (outFile is not null)
             {
+                if (outFile.Exists && !force)
+                {
+                    Console.Error.WriteLine($"error: {outFile.FullName} already exists. Pass --force to overwrite.");
+                    return 1;
+                }
                 outFile.Directory?.Create();
                 await File.WriteAllTextAsync(outFile.FullName, rendered, ct);
                 Console.Error.WriteLine($"Wrote {format} report to {outFile.FullName}");
