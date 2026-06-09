@@ -27,6 +27,12 @@ nothing, prove it.
 The free, AI-free **`analyze`** command is complete. The paid **`generate`** command (Milestone 3)
 writes characterization tests that lock current behavior, with a compile→run→repair loop.
 
+Since then the **deterministic** generator (the default — AI is opt-in, last-resort) has been deepened
+with **conjunctive string + regex guard solvers** that reach branches the constant-miner can't (with
+measured per-method mutation-score lifts in the `prove` flywheel below); the API-key/secret boundary has
+been hardened; and **`pinion init-tests`** scaffolds the host test project. The engine has been dogfooded
+on real .NET Framework legacy apps (WebForms/WCF/EF6) and clean-architecture code.
+
 ---
 
 ## Install
@@ -530,7 +536,7 @@ src/Pinion.Adapters.CSharp         FREE: Roslyn analyze — call graph, landmine
 src/Pinion.Generate                PAID: LLM client, scrubber, prompts, orchestrator
 src/Pinion.Adapters.CSharp.Generate PAID: C# extract + emit + compile/run/snapshot
 src/Pinion.Cli                     `pinion` global tool (bundles both tiers)
-tests/Pinion.Tests                 engine + complexity + tagger + landmine + generation tests (31)
+tests/Pinion.Tests                 engine, analyze, landmine, generation, and guard-solver tests (170)
 samples/LegacyShop           a deliberately under-tested sample (risk + blast radius + coverage)
 samples/LegacyWeb            legacy WebForms/WCF/EF6 fixtures (landmine detection)
 samples/LegacyFramework      classic non-SDK v4.8 .csproj (source-scan fallback)
