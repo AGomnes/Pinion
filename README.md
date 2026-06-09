@@ -305,6 +305,9 @@ sample's *deterministic* tests, **no AI**):
 | + **out/ref output capture** + numeric-string inputs | 56% | HardCases **63% → 81%** |
 | + **object-field synthesis** (build parameter objects from mined constants) + predicate-arg mining | 63% | PriceEngine **53% → 76%** |
 | + **property-based sampling** (CsCheck: deterministic joint-random rows for numeric methods) | **74%** | InvoiceService **37% → 77%** |
+| + **conjunctive guard solver** (a witness + one near-miss per guard: length / char-class / affix) | —<sup>†</sup> | AuthHandler **58% → 81%** |
+
+<sup>†</sup> Measured AuthHandler-scoped this pass (57.69% → 80.77%, Stryker 4.14, identical config before/after); the whole-sample overall wasn't re-run.
 
 So the generator clears length/letter/digit guards, reaches `int.TryParse` success branches, pins the
 behaviour in `out`/`ref` parameters, **constructs parameter objects whose fields carry the mined branch
@@ -314,7 +317,10 @@ ranges derived from the mined constants. That joint sampling escapes the one-hot
 value (`isExempt = true`, `daysLate = -1`) silently starves whole code paths, so arithmetic and loop
 behaviour finally get pinned. The samples are seeded from the method id and **baked into the test as
 literals**, so the golden master stays reproducible and the generated test takes no runtime dependency on
-CsCheck. The remaining gaps (e.g. `AuthHandler` conjunction-of-guards) are what `--provider anthropic` is
+CsCheck. The **conjunction-of-guards** case (e.g. `AuthHandler`: a token that must be 16+ chars AND have a
+letter AND a digit AND not start with `-`) is now handled by a deterministic **guard solver** that emits a
+witness clearing every guard plus one boundary near-miss per guard — taking AuthHandler from 58% to 81%
+with no AI. The remaining tail (private helpers, multi-step state setup) is what `--provider anthropic` is
 for. The point: every change is **measured**, not guessed, and `prove` tells you per method where the net
 is strong vs thin.
 
