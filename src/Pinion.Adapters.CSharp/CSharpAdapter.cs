@@ -127,7 +127,9 @@ public sealed class CSharpAdapter : ILanguageAdapter
             ct.ThrowIfCancellationRequested();
             if (project.Language != LanguageNames.CSharp) continue;
             // Scope to the target project when requested (single-project analyze without --include-refs).
-            if (targetProjectPath is not null && !SamePath(project.FilePath, targetProjectPath)) continue;
+            // Only filter projects that HAVE a file path — the source-scan fallback flattens everything into
+            // one ad-hoc project with no path, and that IS the target, so it must never be filtered out.
+            if (targetProjectPath is not null && project.FilePath is not null && !SamePath(project.FilePath, targetProjectPath)) continue;
 
             var compilation = await project.GetCompilationAsync(ct).ConfigureAwait(false);
             if (compilation is null || IsTestProject(project, compilation)) continue;
