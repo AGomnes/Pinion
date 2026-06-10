@@ -94,6 +94,27 @@ public class LicenseGateTests
     }
 
     [Fact]
+    public void WebCrypto_minted_token_verifies_in_dotnet()
+    {
+        // Cross-runtime interop guard — the load-bearing assumption of the billing backend.
+        // This token was minted by Web Crypto (Node/Deno crypto.subtle, ECDSA P-256, raw r‖s), EXACTLY as
+        // the Supabase mint function (AlexNettside/supabase/functions/_shared/license.ts) produces. If it
+        // verifies here, Deno-minted subscription licenses are accepted by the .NET product offline.
+        // (exp is ~100 years out, so it never expires; the matching public key is inline.)
+        const string webCryptoToken =
+            "eyJzdWIiOiJJbnRlcm9wIFRlc3QiLCJlZCI6InBybyIsImV4cCI6IjIxMjYtMDUtMTdUMTE6MDY6MDMuMzE2WiIsImlhdCI6IjIwMjYtMDYtMTBUMTE6MDY6MDMuMzE2WiIsIm1pZCI6bnVsbH0" +
+            ".Yca6sS0Cch7Q_Lj8PiEvz1kERUBDjuescit8LTRfkEf2SP9iyE8ulbdKM9hJRbesojpw55Cran7CzNnWMErDRA";
+        const string publicKey =
+            "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEvrhzw54B1FOtQjkmDH2X9MpUmML5z+aHBSy8rMUwFNzH4NTtu7R5FSFqKHHISnsa5ysSDTEm6kWq3RZYvb7Vow==";
+
+        var status = LicenseGate.VerifyWith(webCryptoToken, publicKey);
+
+        Assert.True(status.Valid, status.Reason);
+        Assert.Equal("Interop Test", status.Claims!.Subject);
+        Assert.Equal("pro", status.Claims.Edition);
+    }
+
+    [Fact]
     public void DaysUntilExpiry_reflects_the_claim_window()
     {
         string token = LicenseAuthority.Issue("Acme Corp", "pro", 10, machine: null, Issuer.PrivateKeyB64);
