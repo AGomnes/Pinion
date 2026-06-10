@@ -116,6 +116,17 @@ internal static class AnalyzeCommand
             Console.Error.WriteLine($"Analyzing {path} …");
             var units = await adapter.AnalyzeAsync(path, ct);
 
+            // Honesty: Pinion reports one language per run. If the input also holds the OTHER .NET
+            // language, say so — a mixed C#+VB solution would otherwise look fully covered when half was
+            // silently skipped. (To stderr, so JSON/Markdown stdout stays clean.)
+            if (ContainsBothDotNetLanguages(path))
+            {
+                string analyzed = IsVisualBasic(path) ? "VB.NET" : "C#";
+                string other = IsVisualBasic(path) ? "C#" : "VB.NET";
+                Console.Error.WriteLine($"note: this input also contains {other} project(s), which were NOT analyzed — " +
+                    $"Pinion reports one language per run ({analyzed} here). Run `pinion analyze` on the {other} project(s) separately.");
+            }
+
             CoverageSummary? coverage = null;
             if (collectCoverage)
             {
@@ -183,6 +194,39 @@ internal static class AnalyzeCommand
             if (verbose) Console.Error.WriteLine(ex);
             return 1;
         }
+    }
+
+    /// <summary>True if the input (a solution or a directory) holds BOTH C# and VB.NET projects — only
+    /// one language is analyzed per run, so the other would be silently skipped without a note.</summary>
+    private static bool ContainsBothDotNetLanguages(string input)
+    {
+        bool cs, vb;
+        if (File.Exists(input) &&
+            (input.EndsWith(".sln", StringComparison.OrdinalIgnoreCase) || input.EndsWith(".slnx", StringComparison.OrdinalIgnoreCase)))
+        {
+            string text;
+            try { text = File.ReadAllText(input); } catch { return false; }
+            cs = text.Contains(".csproj", StringComparison.OrdinalIgnoreCase);
+            vb = text.Contains(".vbproj", StringComparison.OrdinalIgnoreCase);
+        }
+        else if (Directory.Exists(input))
+        {
+            cs = HasProject(input, "*.csproj");
+            vb = HasProject(input, "*.vbproj");
+        }
+        else return false; // a single project file is one language
+
+        return cs && vb;
+    }
+
+    private static bool HasProject(string dir, string pattern)
+    {
+        try
+        {
+            return Directory.EnumerateFiles(dir, pattern,
+                new EnumerationOptions { RecurseSubdirectories = true, IgnoreInaccessible = true }).Any();
+        }
+        catch { return false; }
     }
 
     /// <summary>VB.NET input: a <c>.vbproj</c> file, or a directory whose only project is a <c>.vbproj</c>.</summary>
