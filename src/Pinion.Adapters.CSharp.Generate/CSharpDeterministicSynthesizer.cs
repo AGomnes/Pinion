@@ -238,8 +238,9 @@ internal sealed partial class CSharpDeterministicSynthesizer : IDisposable
         bool isStatic = method.IsStatic;
         var ret = EffectiveReturn(method);
 
-        // Include a short id hash so overloads (same DisplayName) don't collide on class name.
-        string className = $"{SafeId(unit.DisplayName)}_{ShortHash(unit.Id)}_CharacterizationTests";
+        // Include a short id hash so overloads (same DisplayName) don't collide on class name. Shared with
+        // `verify --since`, which recomputes this name to find the tests covering a changed method.
+        string className = Pinion.Engine.Reporting.CharacterizationNaming.TestClassName(unit.DisplayName, unit.Id);
 
         // out params carry no input value; others vary across their candidates. A top-level string
         // parameter is routed through the guard solver, which spans each guard's boundary (conjunctions

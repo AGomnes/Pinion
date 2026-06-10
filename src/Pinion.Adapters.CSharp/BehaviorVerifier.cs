@@ -22,7 +22,8 @@ public sealed class BehaviorVerifier
     public int RunTimeoutSeconds { get; set; } = 600;
 
     public async Task<BehaviorDiffReport> VerifyAsync(
-        string testProjectPath, string generatedSubdir = "PinionCharacterization", CancellationToken ct = default)
+        string testProjectPath, string generatedSubdir = "PinionCharacterization", CancellationToken ct = default,
+        IReadOnlyCollection<string>? onlyTestClasses = null)
     {
         string full = Path.GetFullPath(testProjectPath);
         string outDir = Path.Combine(Path.GetDirectoryName(full)!, generatedSubdir);
@@ -31,9 +32,16 @@ public sealed class BehaviorVerifier
         if (Directory.Exists(outDir))
             foreach (var stale in Directory.GetFiles(outDir, "*.received.*")) { try { File.Delete(stale); } catch { } }
 
-        _log?.Invoke($"[verify] running locked characterization tests in {Path.GetFileName(full)} …");
+        // Scope (verify --since): run only the characterization classes covering changed code. An empty set
+        // means "scope to nothing" — the caller handles that before calling us, so here null/empty = run all.
+        bool scoped = onlyTestClasses is { Count: > 0 };
+        string filter = "FullyQualifiedName~Pinion.Generated";
+        if (scoped)
+            filter += " & (" + string.Join("|", onlyTestClasses!.Select(c => "FullyQualifiedName~" + c)) + ")";
+
+        _log?.Invoke($"[verify] running {(scoped ? $"{onlyTestClasses!.Count} affected " : "")}locked characterization test(s) in {Path.GetFileName(full)} …");
         var env = new Dictionary<string, string> { ["DiffEngine_Disabled"] = "true" };
-        string[] args = { "test", full, "--nologo", "--verbosity", "quiet", "--filter", "FullyQualifiedName~Pinion.Generated" };
+        string[] args = { "test", full, "--nologo", "--verbosity", "quiet", "--filter", filter };
         var run = await ProcessRunner.RunAsync(
             "dotnet", args, env: env, timeout: TimeSpan.FromSeconds(Math.Max(60, RunTimeoutSeconds)), ct: ct).ConfigureAwait(false);
 
@@ -41,11 +49,15 @@ public sealed class BehaviorVerifier
             return new BehaviorDiffReport(full, DateTimeOffset.Now, Array.Empty<BehaviorDiffEntry>(),
                 BuildFailed: true, BuildErrors: ExtractCompilerErrors(run.Combined));
 
+        var classes = scoped ? new HashSet<string>(onlyTestClasses!, StringComparer.Ordinal) : null;
         var entries = new List<BehaviorDiffEntry>();
         if (Directory.Exists(outDir))
         {
             foreach (var verified in Directory.GetFiles(outDir, "*.verified.*").OrderBy(p => p, StringComparer.Ordinal))
             {
+                // When scoped, only count snapshots whose class is in the affected set (filename is
+                // "<ClassName>.<method>_characterization.verified.<ext>").
+                if (classes is not null && !classes.Contains(ClassNameOf(verified))) continue;
                 string received = verified.Replace(".verified.", ".received.");
                 string name = SnapshotName(verified);
                 if (File.Exists(received))
@@ -68,12 +80,19 @@ public sealed class BehaviorVerifier
     /// → "LocalDatePattern.Format" (best-effort: strip the test-class scaffolding and overload hash).</summary>
     private static string SnapshotName(string verifiedPath)
     {
-        string file = Path.GetFileName(verifiedPath);
-        int dot = file.IndexOf('.');
-        string className = dot > 0 ? file[..dot] : file;
+        string className = ClassNameOf(verifiedPath);
         className = Regex.Replace(className, "_CharacterizationTests$", "");
         className = Regex.Replace(className, "_[0-9a-f]{6}$", "");   // overload disambiguation hash
         return className.Replace('_', '.');
+    }
+
+    /// <summary>The generated test class name from a snapshot path — the filename up to the first '.'
+    /// ("AuthHandler_ValidateToken_1bf177_CharacterizationTests.ValidateToken_…verified.txt" → the class).</summary>
+    private static string ClassNameOf(string verifiedPath)
+    {
+        string file = Path.GetFileName(verifiedPath);
+        int dot = file.IndexOf('.');
+        return dot > 0 ? file[..dot] : file;
     }
 
     private static bool HasBuildError(string output) =>
