@@ -8,6 +8,11 @@ Pinion is a .NET CLI tool that productizes Michael Feathers' **characterization 
 what the code *currently does* as a golden-master safety net. Change everything, break
 nothing, prove it.
 
+> 🔎 **See it on real code → [PROOF.md](PROOF.md)** — a full `analyze → generate → verify`
+> run on [nopCommerce](https://github.com/nopSolutions/nopCommerce) (4,072 methods): finds 2,189
+> high-risk untested methods, locks 17 real service methods offline for $0, and verifies behavior
+> is unchanged. Now also audits **VB.NET** alongside C#.
+
 > **The name.** The working title in the spec was *BehaviorLock*, but that name is already
 > taken by a near-identical open-source project in the same space. **Pinion** is free on
 > NuGet and on-theme: Feathers calls characterization tests "pinning tests," and a pinion
