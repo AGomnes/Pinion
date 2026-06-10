@@ -35,7 +35,8 @@ public sealed class VisualBasicAdapter : ILanguageAdapter
         var (solution, workspace) = await LoadSolutionAsync(path, ct).ConfigureAwait(false);
         try
         {
-            var units = new List<CodeUnit>();
+            // Pass 1: gather every VB production member with its model + imports.
+            var raw = new List<RawVb>();
             foreach (var project in solution.Projects)
             {
                 ct.ThrowIfCancellationRequested();
@@ -55,8 +56,38 @@ public sealed class VisualBasicAdapter : ILanguageAdapter
                     var imports = FileImports(root);
 
                     foreach (var (symbol, decl, body) in BehaviorMembers(root, model, ct))
-                        units.Add(ToCodeUnit(symbol, decl, body, imports, ct));
+                        raw.Add(new RawVb(symbol, decl, body, model, imports, VbSymbols.MethodId(symbol)));
                 }
+            }
+
+            var byId = new Dictionary<string, RawVb>(StringComparer.Ordinal);
+            foreach (var m in raw) byId.TryAdd(m.Id, m); // first declaration wins (partials/overloads share an id rarely)
+            var knownIds = byId.Keys.ToHashSet(StringComparer.Ordinal);
+
+            // Pass 2: call graph (callees within the analyzed set → callers) + referenced names for tagging.
+            var calleesById = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
+            var refNamesById = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
+            var callersById = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
+            foreach (var m in byId.Values)
+            {
+                ct.ThrowIfCancellationRequested();
+                var (callees, refNames) = AnalyzeBody(m, knownIds, ct);
+                calleesById[m.Id] = callees;
+                refNamesById[m.Id] = refNames;
+                foreach (var callee in callees)
+                    (callersById.TryGetValue(callee, out var set) ? set : callersById[callee] = new(StringComparer.Ordinal)).Add(m.Id);
+            }
+
+            // Pass 3: assemble the enriched IR.
+            var units = new List<CodeUnit>(byId.Count);
+            foreach (var m in byId.Values)
+            {
+                ct.ThrowIfCancellationRequested();
+                units.Add(ToCodeUnit(
+                    m,
+                    calleesById[m.Id],
+                    callersById.TryGetValue(m.Id, out var callers) ? callers : new HashSet<string>(),
+                    refNamesById[m.Id]));
             }
 
             _log?.Invoke($"[analyze] {units.Count} VB production member(s) found.");
@@ -99,6 +130,11 @@ public sealed class VisualBasicAdapter : ILanguageAdapter
         return (scan, scan.Workspace); // AdhocWorkspace, owned here → dispose
     }
 
+    /// <summary>One gathered VB member with the context the enrichment passes need.</summary>
+    private sealed record RawVb(
+        IMethodSymbol Symbol, SyntaxNode Decl, MethodBlockBaseSyntax? Body,
+        SemanticModel Model, IReadOnlyList<string> Imports, string Id);
+
     /// <summary>Methods, functions, and constructors with their declaration + (optional) body block.</summary>
     private static IEnumerable<(IMethodSymbol Symbol, SyntaxNode Decl, MethodBlockBaseSyntax? Body)> BehaviorMembers(
         SyntaxNode root, SemanticModel model, CancellationToken ct)
@@ -112,29 +148,52 @@ public sealed class VisualBasicAdapter : ILanguageAdapter
         }
     }
 
-    private static CodeUnit ToCodeUnit(
-        IMethodSymbol symbol, SyntaxNode decl, MethodBlockBaseSyntax? body, IReadOnlyList<string> imports, CancellationToken ct)
+    /// <summary>Resolve calls/constructions in a member's body into in-graph callee ids (blast radius)
+    /// plus a bag of referenced names that sharpen domain tagging.</summary>
+    private static (HashSet<string> Callees, HashSet<string> RefNames) AnalyzeBody(
+        RawVb m, HashSet<string> knownIds, CancellationToken ct)
     {
-        var span = decl.GetLocation().GetLineSpan();
+        var callees = new HashSet<string>(StringComparer.Ordinal);
+        var refNames = new HashSet<string>(StringComparer.Ordinal);
+        if (m.Body is null) return (callees, refNames);
+
+        foreach (var node in m.Body.DescendantNodes())
+        {
+            if (node is not (InvocationExpressionSyntax or ObjectCreationExpressionSyntax)) continue;
+            if (m.Model.GetSymbolInfo(node, ct).Symbol is not IMethodSymbol called) continue;
+
+            refNames.Add(called.Name);
+            if (called.ContainingType is { } type) refNames.Add(type.Name);
+
+            string calleeId = VbSymbols.MethodId(called.OriginalDefinition);
+            if (calleeId != m.Id && knownIds.Contains(calleeId)) callees.Add(calleeId);
+        }
+        return (callees, refNames);
+    }
+
+    private static CodeUnit ToCodeUnit(RawVb m, HashSet<string> callees, HashSet<string> callers, HashSet<string> refNames)
+    {
+        var symbol = m.Symbol;
+        var span = m.Decl.GetLocation().GetLineSpan();
         int startLine = span.StartLinePosition.Line + 1;
-        int endLine = (body ?? decl).GetLocation().GetLineSpan().EndLinePosition.Line + 1;
+        int endLine = ((SyntaxNode?)m.Body ?? m.Decl).GetLocation().GetLineSpan().EndLinePosition.Line + 1;
 
         var parameters = symbol.Parameters.Select(p => new ParamInfo(p.Name, VbSymbols.ShortType(p.Type))).ToList();
 
-        // Domain tags: reuse the engine's language-neutral tagger.
+        // Domain tags: reuse the engine's language-neutral tagger (now fed referenced names too).
         var tags = DomainTagger.Tag(
             symbol.Name,
             symbol.ContainingType?.Name ?? "",
             parameters.Select(p => p.Type),
             symbol.ReturnsVoid ? "void" : VbSymbols.ShortType(symbol.ReturnType),
-            Array.Empty<string>());
+            refNames);
 
         // Landmines: same .NET vocabulary as C#, fed from VB syntax (Imports / Inherits / attributes / file).
-        var typeBlock = decl.Ancestors().OfType<TypeBlockSyntax>().FirstOrDefault();
-        var landmines = VbLandmineDetector.Detect(imports, BaseTypeNames(typeBlock), AttributeNames(decl, typeBlock), span.Path);
+        var typeBlock = m.Decl.Ancestors().OfType<TypeBlockSyntax>().FirstOrDefault();
+        var landmines = VbLandmineDetector.Detect(m.Imports, BaseTypeNames(typeBlock), AttributeNames(m.Decl, typeBlock), span.Path);
 
         return new CodeUnit(
-            Id: VbSymbols.MethodId(symbol),
+            Id: m.Id,
             DisplayName: VbSymbols.DisplayName(symbol),
             FilePath: span.Path,
             StartLine: startLine,
@@ -142,12 +201,12 @@ public sealed class VisualBasicAdapter : ILanguageAdapter
             Signature: VbSymbols.Signature(symbol),
             Parameters: parameters,
             ReturnType: symbol.ReturnsVoid ? "void" : VbSymbols.ShortType(symbol.ReturnType),
-            CyclomaticComplexity: VbComplexity.Compute(body),
+            CyclomaticComplexity: VbComplexity.Compute(m.Body),
             LineCount: Math.Max(1, endLine - startLine + 1),
-            CallerIds: Array.Empty<string>(),   // call graph: follow-up
-            CalleeIds: Array.Empty<string>(),
+            CallerIds: callers.ToList(),
+            CalleeIds: callees.ToList(),
             DomainTags: tags,
-            HasTests: false,                     // test-reference detection: follow-up
+            HasTests: false,                     // VB test-reference detection: follow-up
             IsPublicEntryPoint: VbSymbols.IsPublicEntryPoint(symbol),
             MigrationLandmines: landmines);
     }

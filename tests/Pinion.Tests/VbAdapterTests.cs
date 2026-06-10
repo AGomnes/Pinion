@@ -89,6 +89,12 @@ public class VbSourceScanTests
         Assert.Equal(7, vat!.CyclomaticComplexity);            // VB complexity computed from raw source
         Assert.Contains("money", vat.DomainTags);              // name-based tagging, reused engine logic
         Assert.True(vat.IsPublicEntryPoint);
+
+        // Call graph (blast radius): GrossTotal calls CalculateVat, so CalculateVat has a caller and
+        // GrossTotal has CalculateVat as a callee.
+        var gross = units.First(u => u.DisplayName == "InvoiceService.GrossTotal");
+        Assert.Contains(vat.Id, gross.CalleeIds);
+        Assert.Contains(gross.Id, vat.CallerIds);
     }
 }
 

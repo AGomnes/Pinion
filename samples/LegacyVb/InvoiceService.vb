@@ -29,5 +29,10 @@ Namespace LegacyVb
         Private Function Helper(x As Integer) As Integer
             Return x + 1
         End Function
+
+        ' Calls CalculateVat — gives it a caller, so blast-radius (the call graph) is exercised.
+        Public Function GrossTotal(amount As Decimal, region As String) As Decimal
+            Return amount + CalculateVat(amount, region, False)
+        End Function
     End Class
 End Namespace
