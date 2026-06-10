@@ -17,6 +17,11 @@ public sealed record LicenseClaims(
 public sealed record LicenseStatus(bool Valid, string Reason, LicenseClaims? Claims = null)
 {
     public static LicenseStatus Invalid(string reason) => new(false, reason);
+
+    /// <summary>Whole days until the license expires (negative once expired); null when there are no claims.
+    /// Subscription licenses are short-lived, so the CLI uses this to nudge a refresh before lock-out.</summary>
+    public int? DaysUntilExpiry =>
+        Claims is null ? null : (int)Math.Floor((Claims.Expires - DateTimeOffset.UtcNow).TotalDays);
 }
 
 /// <summary>Shared token format + crypto for offline (no phone-home) license keys.</summary>

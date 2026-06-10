@@ -67,11 +67,40 @@ public static class LicenseGate
         return (Verify(key), source);
     }
 
+    /// <summary>Subscription licenses are short-lived; warn this many days before expiry so the user can
+    /// refresh/renew before the paid tier locks.</summary>
+    public const int RenewalWarningDays = 7;
+
+    /// <summary>The user-level license location (<c>~/.pinion/license</c>) — applies to every project.</summary>
+    public static string GlobalLicensePath() =>
+        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".pinion", "license");
+
+    /// <summary>The project-level license location (<c>./pinion.license</c>).</summary>
+    public static string LocalLicensePath() =>
+        Path.Combine(Directory.GetCurrentDirectory(), "pinion.license");
+
+    /// <summary>
+    /// Validate <paramref name="key"/> and, if valid, install it to <paramref name="path"/> (creating the
+    /// directory). An invalid or expired key is NEVER written — so a customer can't accidentally save a
+    /// bad key and then wonder why nothing works. Returns the validation outcome either way.
+    /// </summary>
+    public static LicenseStatus Install(string? key, string path) => Install(key, path, TrustedPublicKeyB64);
+
+    internal static LicenseStatus Install(string? key, string path, string publicKeyB64)
+    {
+        var status = VerifyWith(key, publicKeyB64);
+        if (!status.Valid) return status;
+        string dir = Path.GetDirectoryName(Path.GetFullPath(path))!;
+        Directory.CreateDirectory(dir);
+        File.WriteAllText(path, key!.Trim());
+        return status;
+    }
+
     private static IEnumerable<(string Path, string Label)> CandidateFiles()
     {
-        yield return (Path.Combine(Directory.GetCurrentDirectory(), "pinion.license"), "./pinion.license");
+        yield return (LocalLicensePath(), "./pinion.license");
         string home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
         if (!string.IsNullOrEmpty(home))
-            yield return (Path.Combine(home, ".pinion", "license"), "~/.pinion/license");
+            yield return (GlobalLicensePath(), "~/.pinion/license");
     }
 }

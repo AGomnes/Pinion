@@ -147,6 +147,7 @@ internal static class GenerateCommand
                 return 2;
             }
             Console.Error.WriteLine($"Licensed to {status.Claims!.Subject} ({status.Claims.Edition}, expires {status.Claims.Expires:yyyy-MM-dd}) [{source}].");
+            LicenseCommand.WarnIfNearExpiry(status);
         }
 
         try

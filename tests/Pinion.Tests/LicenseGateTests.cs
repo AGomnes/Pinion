@@ -92,4 +92,41 @@ public class LicenseGateTests
         Assert.Equal(MachineId.Current(), MachineId.Current());
         Assert.False(string.IsNullOrWhiteSpace(MachineId.Current()));
     }
+
+    [Fact]
+    public void DaysUntilExpiry_reflects_the_claim_window()
+    {
+        string token = LicenseAuthority.Issue("Acme Corp", "pro", 10, machine: null, Issuer.PrivateKeyB64);
+        var status = LicenseGate.VerifyWith(token, Issuer.PublicKeyB64);
+
+        Assert.True(status.Valid);
+        Assert.InRange(status.DaysUntilExpiry!.Value, 9, 10); // ~10 days, allowing for sub-day rounding
+    }
+
+    [Fact]
+    public void Install_writes_a_valid_key_and_refuses_an_invalid_one()
+    {
+        string dir = Path.Combine(Path.GetTempPath(), "pinion-activate-" + System.Guid.NewGuid().ToString("N"));
+        string path = Path.Combine(dir, "license");
+        try
+        {
+            string good = LicenseAuthority.Issue("Acme Corp", "pro", 30, machine: null, Issuer.PrivateKeyB64);
+
+            // Valid key → installed.
+            var ok = LicenseGate.Install(good, path, Issuer.PublicKeyB64);
+            Assert.True(ok.Valid, ok.Reason);
+            Assert.True(File.Exists(path));
+            Assert.Equal(good, File.ReadAllText(path).Trim());
+
+            // Invalid key → never written (here, to a fresh path so we can assert nothing lands).
+            string path2 = Path.Combine(dir, "license2");
+            var bad = LicenseGate.Install("not-a-license", path2, Issuer.PublicKeyB64);
+            Assert.False(bad.Valid);
+            Assert.False(File.Exists(path2));
+        }
+        finally
+        {
+            try { Directory.Delete(dir, recursive: true); } catch { /* ignore */ }
+        }
+    }
 }
