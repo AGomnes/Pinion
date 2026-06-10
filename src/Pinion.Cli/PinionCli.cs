@@ -19,6 +19,7 @@ public static class PinionCli
         var root = new RootCommand(
             "Pinion — lock the current behavior of legacy .NET so you can migrate without breaking the base.");
 
+        root.Subcommands.Add(QuickstartCommand.Build());
         root.Subcommands.Add(AnalyzeCommand.Build());
         root.Subcommands.Add(GenerateCommand.Build());
         root.Subcommands.Add(InitTestsCommand.Build());
