@@ -1,5 +1,6 @@
 using System.IO;
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.Text;
 using Microsoft.CodeAnalysis.VisualBasic;
 using Microsoft.CodeAnalysis.VisualBasic.Syntax;
 using Pinion.Adapters.VisualBasic;
@@ -95,6 +96,62 @@ public class VbSourceScanTests
         var gross = units.First(u => u.DisplayName == "InvoiceService.GrossTotal");
         Assert.Contains(vat.Id, gross.CalleeIds);
         Assert.Contains(gross.Id, vat.CallerIds);
+    }
+
+    [Fact]
+    public async Task Tested_method_is_detected_via_a_referencing_test_project()
+    {
+        // A production VB project + a "Tests" project that references it and calls Add (but not Unused).
+        // The adapter must mark Add as HasTests and leave Unused untested. Built in-memory so it's
+        // deterministic (no dependence on MSBuild being registered in this run).
+        var tpa = ((string)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES")!).Split(Path.PathSeparator);
+        // Exclude test-framework assemblies — the test host's TPA contains xunit/testplatform, which would
+        // otherwise make IsTestProject (correctly) classify the production project as a test project too.
+        string[] testMarkers = { "xunit", "testplatform", "testhost", "mstest", "nunit" };
+        var refs = tpa
+            .Where(p => p.EndsWith(".dll", StringComparison.OrdinalIgnoreCase))
+            .Where(p => !testMarkers.Any(m => Path.GetFileName(p).Contains(m, StringComparison.OrdinalIgnoreCase)))
+            .Select(p => (MetadataReference)MetadataReference.CreateFromFile(p)).ToList();
+
+        var ws = new AdhocWorkspace();
+        var prodId = ProjectId.CreateNewId();
+        var sol = ws.CurrentSolution.AddProject(ProjectInfo.Create(
+            prodId, VersionStamp.Default, "Prod", "Prod", LanguageNames.VisualBasic, metadataReferences: refs));
+        sol = sol.AddDocument(DocumentId.CreateNewId(prodId), "Calc.vb", SourceText.From("""
+            Namespace M
+                Public Class Calc
+                    Public Function Add(a As Integer, b As Integer) As Integer
+                        Return a + b
+                    End Function
+                    Public Function Unused(x As Integer) As Integer
+                        Return x
+                    End Function
+                End Class
+            End Namespace
+            """));
+
+        var testId = ProjectId.CreateNewId();
+        sol = sol.AddProject(ProjectInfo.Create(
+            testId, VersionStamp.Default, "ProdTests", "ProdTests", LanguageNames.VisualBasic,
+            metadataReferences: refs, projectReferences: new[] { new ProjectReference(prodId) }));
+        sol = sol.AddDocument(DocumentId.CreateNewId(testId), "CalcTests.vb", SourceText.From("""
+            Namespace M
+                Public Class CalcTests
+                    Public Sub AddsTwoNumbers()
+                        Dim r = New Calc().Add(1, 2)
+                    End Sub
+                End Class
+            End Namespace
+            """));
+
+        var units = await new VisualBasicAdapter().AnalyzeSolutionAsync(sol, targetProjectPath: null, default);
+
+        string dump = "[" + string.Join(" | ", units.Select(u => $"{u.DisplayName} tests={u.HasTests}")) + "]";
+        var add = units.FirstOrDefault(u => u.DisplayName == "Calc.Add");
+        Assert.True(add is not null, "no Calc.Add — units: " + dump);
+        Assert.True(add!.HasTests, "Add should be tested — units: " + dump);
+        Assert.False(units.First(u => u.DisplayName == "Calc.Unused").HasTests);
+        Assert.DoesNotContain(units, u => u.DisplayName == "CalcTests.AddsTwoNumbers"); // test members excluded
     }
 }
 

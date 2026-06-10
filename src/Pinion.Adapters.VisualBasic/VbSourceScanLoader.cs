@@ -19,29 +19,70 @@ internal static class VbSourceScanLoader
     public static Solution Load(string targetPath, Action<string>? log)
     {
         string root = ResolveRoot(targetPath);
-        var files = EnumerateVbFiles(root).ToList();
 
-        log?.Invoke($"[analyze] VB source scan: {files.Count} .vb file(s) under {root}.");
+        var production = new List<string>();
+        var tests = new List<string>();
+        foreach (var f in EnumerateVbFiles(root))
+            (IsTestFile(f) ? tests : production).Add(f);
+
+        log?.Invoke($"[analyze] VB source scan: {production.Count} source file(s), {tests.Count} test file(s) under {root}.");
 
         var refs = RuntimeReferences();
         var workspace = new AdhocWorkspace();
         Solution solution = workspace.CurrentSolution;
 
-        var projId = ProjectId.CreateNewId();
+        var prodId = ProjectId.CreateNewId();
         solution = solution.AddProject(ProjectInfo.Create(
-            projId, VersionStamp.Default, "ScannedVbSources", "ScannedVbSources",
+            prodId, VersionStamp.Default, "ScannedVbSources", "ScannedVbSources",
             LanguageNames.VisualBasic, metadataReferences: refs));
+        solution = AddDocuments(solution, prodId, production);
 
+        if (tests.Count > 0)
+        {
+            // Name ends in "Tests" so the adapter's IsTestProject heuristic catches it, and it references
+            // the production project so test calls resolve to production symbols (→ HasTests).
+            var testId = ProjectId.CreateNewId();
+            solution = solution.AddProject(ProjectInfo.Create(
+                testId, VersionStamp.Default, "ScannedVbTests", "ScannedVbTests",
+                LanguageNames.VisualBasic, metadataReferences: refs,
+                projectReferences: new[] { new ProjectReference(prodId) }));
+            solution = AddDocuments(solution, testId, tests);
+        }
+
+        return solution;
+    }
+
+    private static Solution AddDocuments(Solution solution, ProjectId projectId, IEnumerable<string> files)
+    {
         foreach (var file in files)
         {
             string text;
             try { text = File.ReadAllText(file); }
             catch { continue; }
             solution = solution.AddDocument(
-                DocumentId.CreateNewId(projId), Path.GetFileName(file), SourceText.From(text), filePath: file);
+                DocumentId.CreateNewId(projectId), Path.GetFileName(file), SourceText.From(text), filePath: file);
         }
-
         return solution;
+    }
+
+    private static bool IsTestFile(string path)
+    {
+        string name = Path.GetFileNameWithoutExtension(path);
+        if (name.EndsWith("Tests", StringComparison.OrdinalIgnoreCase) || name.EndsWith("Test", StringComparison.OrdinalIgnoreCase))
+            return true;
+        if (path.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+                .Any(s => s.EndsWith("Tests", StringComparison.OrdinalIgnoreCase)))
+            return true;
+        try
+        {
+            string head = File.ReadAllText(path);
+            if (head.Contains("Imports Xunit", StringComparison.OrdinalIgnoreCase)
+                || head.Contains("Imports NUnit", StringComparison.OrdinalIgnoreCase)
+                || head.Contains("Microsoft.VisualStudio.TestTools", StringComparison.Ordinal))
+                return true;
+        }
+        catch { /* ignore */ }
+        return false;
     }
 
     private static string ResolveRoot(string targetPath)

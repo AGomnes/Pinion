@@ -35,6 +35,23 @@ public sealed class VisualBasicAdapter : ILanguageAdapter
         var (solution, workspace) = await LoadSolutionAsync(path, ct).ConfigureAwait(false);
         try
         {
+            return await AnalyzeSolutionAsync(solution, isProject ? path : null, ct).ConfigureAwait(false);
+        }
+        finally
+        {
+            workspace?.Dispose();
+        }
+    }
+
+    /// <summary>The language-agnostic core, over an already-loaded solution (MSBuild or source-scan):
+    /// gather production members → call graph + tags → IR. Internal so it can be tested directly with an
+    /// in-memory solution, independent of how the solution was loaded.</summary>
+    internal async Task<IReadOnlyList<CodeUnit>> AnalyzeSolutionAsync(Solution solution, string? targetProjectPath, CancellationToken ct)
+    {
+        {
+            // Which production members any test project references — turns "untested" into a fact.
+            var testedIds = await CollectTestedMethodIdsAsync(solution, ct).ConfigureAwait(false);
+
             // Pass 1: gather every VB production member with its model + imports.
             var raw = new List<RawVb>();
             foreach (var project in solution.Projects)
@@ -43,10 +60,10 @@ public sealed class VisualBasicAdapter : ILanguageAdapter
                 if (project.Language != LanguageNames.VisualBasic) continue;
                 // Scope a single-project analyze to that project (don't pull in referenced projects'
                 // members). The source-scan project has no file path — it IS the target — so never filter it.
-                if (isProject && project.FilePath is not null && !SamePath(project.FilePath, path)) continue;
+                if (targetProjectPath is not null && project.FilePath is not null && !SamePath(project.FilePath, targetProjectPath)) continue;
 
                 var compilation = await project.GetCompilationAsync(ct).ConfigureAwait(false);
-                if (compilation is null) continue;
+                if (compilation is null || IsTestProject(project, compilation)) continue;
 
                 foreach (var tree in compilation.SyntaxTrees)
                 {
@@ -87,15 +104,12 @@ public sealed class VisualBasicAdapter : ILanguageAdapter
                     m,
                     calleesById[m.Id],
                     callersById.TryGetValue(m.Id, out var callers) ? callers : new HashSet<string>(),
-                    refNamesById[m.Id]));
+                    refNamesById[m.Id],
+                    testedIds));
             }
 
             _log?.Invoke($"[analyze] {units.Count} VB production member(s) found.");
             return units;
-        }
-        finally
-        {
-            workspace?.Dispose();
         }
     }
 
@@ -171,7 +185,51 @@ public sealed class VisualBasicAdapter : ILanguageAdapter
         return (callees, refNames);
     }
 
-    private static CodeUnit ToCodeUnit(RawVb m, HashSet<string> callees, HashSet<string> callers, HashSet<string> refNames)
+    /// <summary>Walk every VB test project's calls/constructions and record the production member ids
+    /// they reference — symbol-level, so the "untested" count is a fact, not a guess.</summary>
+    private static async Task<HashSet<string>> CollectTestedMethodIdsAsync(Solution solution, CancellationToken ct)
+    {
+        var tested = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var project in solution.Projects)
+        {
+            ct.ThrowIfCancellationRequested();
+            if (project.Language != LanguageNames.VisualBasic) continue;
+
+            var compilation = await project.GetCompilationAsync(ct).ConfigureAwait(false);
+            if (compilation is null || !IsTestProject(project, compilation)) continue;
+
+            foreach (var tree in compilation.SyntaxTrees)
+            {
+                ct.ThrowIfCancellationRequested();
+                var model = compilation.GetSemanticModel(tree);
+                var root = await tree.GetRootAsync(ct).ConfigureAwait(false);
+                foreach (var node in root.DescendantNodes())
+                {
+                    if (node is not (InvocationExpressionSyntax or ObjectCreationExpressionSyntax)) continue;
+                    if (model.GetSymbolInfo(node, ct).Symbol is IMethodSymbol called)
+                        tested.Add(VbSymbols.MethodId(called.OriginalDefinition));
+                }
+            }
+        }
+        return tested;
+    }
+
+    private static bool IsTestProject(Project project, Compilation compilation)
+    {
+        foreach (var asm in compilation.ReferencedAssemblyNames)
+        {
+            string name = asm.Name;
+            if (name.StartsWith("xunit", StringComparison.OrdinalIgnoreCase)
+                || name.StartsWith("nunit", StringComparison.OrdinalIgnoreCase)
+                || name.IndexOf("TestPlatform", StringComparison.OrdinalIgnoreCase) >= 0
+                || name.IndexOf("MSTest", StringComparison.OrdinalIgnoreCase) >= 0)
+                return true;
+        }
+        return project.Name.EndsWith("Tests", StringComparison.OrdinalIgnoreCase)
+            || project.Name.EndsWith("Test", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static CodeUnit ToCodeUnit(RawVb m, HashSet<string> callees, HashSet<string> callers, HashSet<string> refNames, HashSet<string> testedIds)
     {
         var symbol = m.Symbol;
         var span = m.Decl.GetLocation().GetLineSpan();
@@ -206,7 +264,7 @@ public sealed class VisualBasicAdapter : ILanguageAdapter
             CallerIds: callers.ToList(),
             CalleeIds: callees.ToList(),
             DomainTags: tags,
-            HasTests: false,                     // VB test-reference detection: follow-up
+            HasTests: testedIds.Contains(m.Id),
             IsPublicEntryPoint: VbSymbols.IsPublicEntryPoint(symbol),
             MigrationLandmines: landmines);
     }
