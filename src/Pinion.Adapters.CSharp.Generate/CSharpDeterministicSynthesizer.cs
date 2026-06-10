@@ -274,6 +274,7 @@ internal sealed partial class CSharpDeterministicSynthesizer : IDisposable
         //  - `enable annotations` keeps our own `object?` casts legal even when the host is <Nullable>disable</Nullable> (else CS8632).
         //  - `disable warnings` lets a `null`/`default` edge-input candidate compile under <Nullable>enable</Nullable> +
         //    warnings-as-errors (else CS8625/CS8600/CS8604 would error and silently drop the target).
+        sb.AppendLine(Pinion.Engine.Reporting.CharacterizationFormat.Stamp); // format version — `verify` checks it
         sb.AppendLine("#nullable enable annotations");
         sb.AppendLine("#nullable disable warnings");
         sb.AppendLine("using System;");

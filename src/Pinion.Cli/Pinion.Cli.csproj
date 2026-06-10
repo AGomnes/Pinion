@@ -18,14 +18,16 @@
     <RepositoryUrl>https://github.com/AGomnes/Pinion</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
     <PackageProjectUrl>https://github.com/AGomnes/Pinion</PackageProjectUrl>
-    <!-- License: Pinion is commercial (paid subscription), NOT open source — so do NOT set an OSS
-         PackageLicenseExpression (e.g. MIT). Before publishing, add a proprietary EULA file and reference
-         it with PackageLicenseFile + PackageRequireLicenseAcceptance. Left unset deliberately. -->
+    <!-- Commercial license (proprietary EULA, NOT an OSS expression). Review EULA.md with a lawyer and
+         fill in the placeholders before publishing. -->
+    <PackageLicenseFile>EULA.md</PackageLicenseFile>
+    <PackageRequireLicenseAcceptance>true</PackageRequireLicenseAcceptance>
     <SuppressDependenciesWhenPacking>false</SuppressDependenciesWhenPacking>
   </PropertyGroup>
 
   <ItemGroup>
     <None Include="..\..\README.md" Pack="true" PackagePath="\" />
+    <None Include="..\..\EULA.md" Pack="true" PackagePath="\" />
   </ItemGroup>
 
   <ItemGroup>
