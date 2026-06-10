@@ -2,6 +2,7 @@
   <Folder Name="/src/">
     <Project Path="src/Pinion.Adapters.CSharp.Generate/Pinion.Adapters.CSharp.Generate.csproj" />
     <Project Path="src/Pinion.Adapters.CSharp/Pinion.Adapters.CSharp.csproj" />
+    <Project Path="src/Pinion.Adapters.VisualBasic/Pinion.Adapters.VisualBasic.csproj" />
     <Project Path="src/Pinion.Cli/Pinion.Cli.csproj" />
     <Project Path="src/Pinion.Engine/Pinion.Engine.csproj" />
     <Project Path="src/Pinion.Generate/Pinion.Generate.csproj" />

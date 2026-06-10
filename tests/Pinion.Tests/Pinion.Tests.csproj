@@ -22,6 +22,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\Pinion.Engine\Pinion.Engine.csproj" />
     <ProjectReference Include="..\..\src\Pinion.Adapters.CSharp\Pinion.Adapters.CSharp.csproj" />
+    <ProjectReference Include="..\..\src\Pinion.Adapters.VisualBasic\Pinion.Adapters.VisualBasic.csproj" />
     <ProjectReference Include="..\..\src\Pinion.Generate\Pinion.Generate.csproj" />
     <ProjectReference Include="..\..\src\Pinion.Adapters.CSharp.Generate\Pinion.Adapters.CSharp.Generate.csproj" />
     <ProjectReference Include="..\..\tools\Pinion.LicenseAdmin\Pinion.LicenseAdmin.csproj" />

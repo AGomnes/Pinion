@@ -28,6 +28,7 @@
     <!-- Free tier -->
     <ProjectReference Include="..\Pinion.Engine\Pinion.Engine.csproj" />
     <ProjectReference Include="..\Pinion.Adapters.CSharp\Pinion.Adapters.CSharp.csproj" />
+    <ProjectReference Include="..\Pinion.Adapters.VisualBasic\Pinion.Adapters.VisualBasic.csproj" />
     <!-- Paid tier (the CLI is the composition root that bundles both) -->
     <ProjectReference Include="..\Pinion.Generate\Pinion.Generate.csproj" />
     <ProjectReference Include="..\Pinion.Adapters.CSharp.Generate\Pinion.Adapters.CSharp.Generate.csproj" />

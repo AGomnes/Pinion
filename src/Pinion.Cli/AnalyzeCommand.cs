@@ -1,5 +1,7 @@
 using System.CommandLine;
 using Pinion.Adapters.CSharp;
+using Pinion.Adapters.VisualBasic;
+using Pinion.Engine.Abstractions;
 using Pinion.Engine.Analysis;
 using Pinion.Engine.Reporting;
 using Pinion.Generate;
@@ -105,7 +107,11 @@ internal static class AnalyzeCommand
 
         try
         {
-            var adapter = new CSharpAdapter(log, includeReferencedProjects: includeRefs);
+            // Pick the language adapter from the input. VB.NET (.vbproj / a directory holding one) routes
+            // to the VB adapter; everything else is C#. Both speak the same IR, so the rest is identical.
+            ILanguageAdapter adapter = IsVisualBasic(path)
+                ? new VisualBasicAdapter(log)
+                : new CSharpAdapter(log, includeReferencedProjects: includeRefs);
 
             Console.Error.WriteLine($"Analyzing {path} …");
             var units = await adapter.AnalyzeAsync(path, ct);
@@ -177,6 +183,17 @@ internal static class AnalyzeCommand
             if (verbose) Console.Error.WriteLine(ex);
             return 1;
         }
+    }
+
+    /// <summary>VB.NET input: a <c>.vbproj</c> file, or a directory whose only project is a <c>.vbproj</c>.</summary>
+    private static bool IsVisualBasic(string input)
+    {
+        if (File.Exists(input)) return input.EndsWith(".vbproj", StringComparison.OrdinalIgnoreCase);
+        if (Directory.Exists(input))
+            return Directory.EnumerateFiles(input, "*.vbproj").Any()
+                && !Directory.EnumerateFiles(input, "*.csproj").Any()
+                && !Directory.EnumerateFiles(input, "*.sln").Concat(Directory.EnumerateFiles(input, "*.slnx")).Any();
+        return false;
     }
 
     /// <summary>
