@@ -16,8 +16,37 @@ public static class LicenseGate
     public const string TrustedPublicKeyB64 =
         "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE6zb/pD0QdKJNaJjR/llOsHr5PMyFrw8PXvtkFbd33/DOsessrdDLcguLH372UzQ+m9TUuHv+pVo/AZZl4Bo9Zg==";
 
-    /// <summary>Verify a token against the embedded trusted key.</summary>
-    public static LicenseStatus Verify(string? token) => VerifyWith(token, TrustedPublicKeyB64);
+    /// <summary>
+    /// Every public key this build accepts. Normally just the primary. To ROTATE the signing key without
+    /// breaking anyone: add the NEW public key here and ship — licenses signed by either key then verify.
+    /// A release or two later, once all live licenses are re-minted under the new key, drop the old one.
+    /// Order doesn't matter; a token is valid if ANY listed key verifies it.
+    /// </summary>
+    public static readonly string[] TrustedPublicKeysB64 = { TrustedPublicKeyB64 };
+
+    /// <summary>Verify a token against the embedded trusted key(s).</summary>
+    public static LicenseStatus Verify(string? token) => VerifyAgainst(token, TrustedPublicKeysB64);
+
+    /// <summary>
+    /// Verify against a set of candidate public keys (key-rotation aware): valid if ANY key accepts the
+    /// token. On failure, returns the most informative status — a token that matched a key but failed a
+    /// later check (e.g. expired) is reported as such, not as a generic signature mismatch.
+    /// </summary>
+    internal static LicenseStatus VerifyAgainst(string? token, IReadOnlyList<string> publicKeysB64)
+    {
+        LicenseStatus? best = null;
+        foreach (var pub in publicKeysB64)
+        {
+            var status = VerifyWith(token, pub);
+            if (status.Valid) return status;
+            if (best is null || (IsKeyMismatch(best) && !IsKeyMismatch(status))) best = status;
+        }
+        return best ?? LicenseStatus.Invalid("no license provided");
+    }
+
+    private static bool IsKeyMismatch(LicenseStatus s) =>
+        s.Reason.Contains("signature", StringComparison.OrdinalIgnoreCase)
+        || s.Reason.Contains("trusted license key", StringComparison.OrdinalIgnoreCase);
 
     internal static LicenseStatus VerifyWith(string? token, string publicKeyB64)
     {

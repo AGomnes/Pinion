@@ -1,0 +1,51 @@
+# Release: build, test, pack the `pinion` dotnet tool, and (on a version tag) publish it to NuGet.
+# This is how updates reach users — they run `dotnet tool update -g Pinion` to pull a published version.
+#
+# To cut a release:   git tag v0.2.0 && git push origin v0.2.0
+#   → packs Pinion 0.2.0 and pushes it to NuGet IF the NUGET_API_KEY secret is set.
+# Without the secret (or on a manual run), it still builds + packs and uploads the .nupkg as an artifact,
+# so nothing is published until you're ready.
+name: Release
+
+on:
+  push:
+    tags: [ 'v*' ]
+  workflow_dispatch: {}   # manual run: pack + artifact only, never publishes
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up .NET (8 + 10)
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            8.0.x
+            10.0.x
+
+      - name: Build (Release)
+        run: dotnet build Pinion.slnx -c Release
+
+      - name: Test
+        run: dotnet test tests/Pinion.Tests/Pinion.Tests.csproj -c Release --no-build --filter "Category!=EndToEnd"
+
+      - name: Pack
+        # On a tag, the package version comes from the tag (v0.2.0 -> 0.2.0); otherwise a -ci suffix.
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then VER="${GITHUB_REF_NAME#v}"; else VER="0.1.0-ci"; fi
+          echo "Packing version $VER"
+          dotnet pack src/Pinion.Cli/Pinion.Cli.csproj -c Release -o artifacts -p:Version="$VER"
+
+      - name: Upload package artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: nupkg
+          path: artifacts/*.nupkg
+
+      - name: Publish to NuGet
+        if: ${{ startsWith(github.ref, 'refs/tags/v') && env.NUGET_API_KEY != '' }}
+        run: dotnet nuget push "artifacts/*.nupkg" --api-key "$NUGET_API_KEY" --source https://api.nuget.org/v3/index.json --skip-duplicate

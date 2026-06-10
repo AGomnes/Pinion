@@ -94,6 +94,34 @@ public class LicenseGateTests
     }
 
     [Fact]
+    public void Rotation_accepts_a_token_signed_by_any_trusted_key()
+    {
+        // Key rotation: while both keys are trusted, a license signed by EITHER must verify — so issuing
+        // can move to a new key without invalidating licenses already minted under the old one.
+        var keyA = LicenseAuthority.GenerateKeyPair();
+        var keyB = LicenseAuthority.GenerateKeyPair();
+        string tokenB = LicenseAuthority.Issue("Acme Corp", "pro", 365, machine: null, keyB.PrivateKeyB64);
+
+        Assert.True(LicenseGate.VerifyAgainst(tokenB, new[] { keyA.PublicKeyB64, keyB.PublicKeyB64 }).Valid);
+        Assert.False(LicenseGate.VerifyAgainst(tokenB, new[] { keyA.PublicKeyB64 }).Valid); // key B dropped → rejected
+    }
+
+    [Fact]
+    public void Rotation_reports_expiry_not_signature_when_a_key_matches()
+    {
+        // The failure message should reflect that the token WAS ours (matched a key) but expired — not a
+        // misleading "signature mismatch" from the other trusted key.
+        var keyA = LicenseAuthority.GenerateKeyPair();
+        var keyB = LicenseAuthority.GenerateKeyPair();
+        string expiredB = LicenseAuthority.Issue("Acme Corp", "pro", -1, machine: null, keyB.PrivateKeyB64);
+
+        var status = LicenseGate.VerifyAgainst(expiredB, new[] { keyA.PublicKeyB64, keyB.PublicKeyB64 });
+
+        Assert.False(status.Valid);
+        Assert.Contains("expired", status.Reason, System.StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void WebCrypto_minted_token_verifies_in_dotnet()
     {
         // Cross-runtime interop guard — the load-bearing assumption of the billing backend.

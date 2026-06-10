@@ -15,8 +15,12 @@
     <Description>Characterization-test generator for legacy .NET. Change everything, break nothing, prove it. Free `analyze` audit; deterministic `generate`; `prove` (mutation score), `ci`, and an offline HTML dashboard.</Description>
     <PackageTags>characterization-tests;pinning-tests;legacy;migration;roslyn;mutation-testing;dotnet-tool;golden-master</PackageTags>
     <PackageReadmeFile>README.md</PackageReadmeFile>
-    <!-- License/publish destination (public NuGet vs private feed) is a business decision — see memory.
-         Left unset deliberately; set PackageLicenseExpression/File before publishing. -->
+    <RepositoryUrl>https://github.com/AGomnes/Pinion</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageProjectUrl>https://github.com/AGomnes/Pinion</PackageProjectUrl>
+    <!-- License: Pinion is commercial (paid subscription), NOT open source — so do NOT set an OSS
+         PackageLicenseExpression (e.g. MIT). Before publishing, add a proprietary EULA file and reference
+         it with PackageLicenseFile + PackageRequireLicenseAcceptance. Left unset deliberately. -->
     <SuppressDependenciesWhenPacking>false</SuppressDependenciesWhenPacking>
   </PropertyGroup>
 
