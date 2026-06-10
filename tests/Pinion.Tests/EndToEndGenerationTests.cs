@@ -86,6 +86,39 @@ public class EndToEndGenerationTests
     }
 
     [Fact]
+    public async Task Public_constructor_is_characterized_capturing_constructed_state()
+    {
+        string sampleRoot = Path.Combine(RepoRoot(), "samples", "LegacyShop");
+        string hardCases = Path.Combine(sampleRoot, "src", "LegacyShop", "HardCases.cs");
+        string testProject = Path.Combine(sampleRoot, "tests", "LegacyShop.Tests", "LegacyShop.Tests.csproj");
+        string outDir = Path.Combine(Path.GetDirectoryName(testProject)!, "PinionCharacterization");
+
+        // On real domain models constructors are the dominant high-risk unit, but the synthesizer used to
+        // only resolve MethodDeclarationSyntax — so `new Made(...)` could never be locked. It must now
+        // characterize the constructor: capture the constructed object for a valid input and the guard
+        // exception for a bad one. (Found dogfooding eShopOnWeb, where 8 of the top 15 units were ctors.)
+        var ctor = UnitAt(hardCases, "Made.ctor", "Made");
+
+        if (Directory.Exists(outDir)) Directory.Delete(outDir, recursive: true);
+        try
+        {
+            using var gen = new CSharpTestGenerator();
+            gen.ConfigureGeneration(testProject);
+            var results = await gen.GenerateDeterministicBatchAsync(new[] { ctor }, sampleRoot, default);
+
+            var r = results.Single();
+            Assert.True(r.Success, "constructor did not characterize: " + string.Join(" | ", r.Diagnostics));
+            string snap = await File.ReadAllTextAsync(r.SnapshotPath!);
+            Assert.Contains("Label", snap);             // constructed object's public state captured
+            Assert.Contains("ArgumentException", snap); // the guard on bad input captured too
+        }
+        finally
+        {
+            if (Directory.Exists(outDir)) { try { Directory.Delete(outDir, recursive: true); } catch { } }
+        }
+    }
+
+    [Fact]
     public async Task Nondeterministic_method_is_quarantined_with_a_seam_diagnosis()
     {
         string sampleRoot = Path.Combine(RepoRoot(), "samples", "LegacyShop");

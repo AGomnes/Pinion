@@ -70,6 +70,22 @@ public class HardCases
     public string Ship(Shipment shipment) => $"{shipment.Destination}:{shipment.Weight}";
 }
 
+/// <summary>A public constructor IS a unit under test — on real domain models (DDD entities/value
+/// objects) constructors are the dominant high-risk unit. `new Made(...)` is characterized, capturing the
+/// constructed object's state for valid input and the guard exception for bad input.</summary>
+public sealed class Made
+{
+    public string Label { get; }
+    public int Count { get; }
+
+    public Made(string label, int count)
+    {
+        if (string.IsNullOrEmpty(label)) throw new System.ArgumentException("label required");
+        Label = label;
+        Count = count < 0 ? 0 : count;
+    }
+}
+
 /// <summary>A type with a <c>required</c> member — <c>new Shipment()</c> without an initializer is CS9035,
 /// so the synthesizer must emit <c>new Shipment { Destination = … }</c>.</summary>
 public sealed class Shipment

@@ -61,7 +61,8 @@ internal sealed partial class CSharpDeterministicSynthesizer : IDisposable
         _solutions.Clear();
     }
 
-    private sealed record Resolved(IMethodSymbol Method, MethodDeclarationSyntax Decl, SemanticModel Model);
+    // BaseMethodDeclarationSyntax covers methods AND constructors/operators — both carry Body/ExpressionBody.
+    private sealed record Resolved(IMethodSymbol Method, BaseMethodDeclarationSyntax Decl, SemanticModel Model);
 
     private sealed class Mined
     {
@@ -153,11 +154,12 @@ internal sealed partial class CSharpDeterministicSynthesizer : IDisposable
             var root = await doc.GetSyntaxRootAsync(ct).ConfigureAwait(false);
             if (model is null || root is null) continue;
 
-            foreach (var decl in root.DescendantNodes().OfType<MethodDeclarationSyntax>())
+            // Methods AND constructors (ConstructorDeclarationSyntax) — both are BaseMethodDeclarationSyntax.
+            foreach (var decl in root.DescendantNodes().OfType<BaseMethodDeclarationSyntax>())
             {
                 if (decl.GetLocation().GetLineSpan().StartLinePosition.Line + 1 == unit.StartLine
                     && model.GetDeclaredSymbol(decl, ct) is IMethodSymbol m
-                    && m.Name == unit.SimpleName)
+                    && NameMatches(m, unit.SimpleName))
                 {
                     return new Resolved(m, decl, model);
                 }
@@ -165,6 +167,12 @@ internal sealed partial class CSharpDeterministicSynthesizer : IDisposable
         }
         return null;
     }
+
+    /// <summary>Match a resolved symbol to the unit's simple name. A constructor's symbol name is ".ctor"
+    /// while the unit's display/simple name uses "ctor" — bridge that so constructors resolve.</summary>
+    private static bool NameMatches(IMethodSymbol m, string simpleName) =>
+        m.Name == simpleName
+        || (m.MethodKind == MethodKind.Constructor && simpleName is "ctor" or ".ctor");
 
     /// <summary>
     /// Collect the constants the method uses to DECIDE — operands of comparisons (&lt; &gt; == …),
@@ -236,7 +244,11 @@ internal sealed partial class CSharpDeterministicSynthesizer : IDisposable
         string type = method.ContainingType.ToDisplayString(FullyQualified);
         string methodName = method.Name;
         bool isStatic = method.IsStatic;
-        var ret = EffectiveReturn(method);
+        // A constructor IS the unit under test: `new T(args)` is the call, the constructed object is the
+        // captured outcome (Verify serializes its public state), and there's no receiver to build.
+        bool isCtor = method.MethodKind == MethodKind.Constructor;
+        var ret = isCtor ? new ReturnShape(IsAsync: false, IsVoidLike: false, IsRefLike: false) : EffectiveReturn(method);
+        string testMethodName = isCtor ? "Constructor" : SafeId(methodName);
 
         // Include a short id hash so overloads (same DisplayName) don't collide on class name. Shared with
         // `verify --since`, which recomputes this name to find the tests covering a changed method.
@@ -277,16 +289,18 @@ internal sealed partial class CSharpDeterministicSynthesizer : IDisposable
         sb.AppendLine($"public class {className}");
         sb.AppendLine("{");
         sb.AppendLine($"    [Fact(Timeout = {PerTestTimeoutMs})]");
-        sb.AppendLine($"    public async Task {SafeId(methodName)}_characterization()");
+        sb.AppendLine($"    public async Task {testMethodName}_characterization()");
         sb.AppendLine("    {");
         sb.AppendLine("        var entries = new List<object>();");
-        if (!isStatic) sb.AppendLine($"        var sut = {BuildSut(method.ContainingType)};");
+        if (!isStatic && !isCtor) sb.AppendLine($"        var sut = {BuildSut(method.ContainingType)};");
         sb.AppendLine();
 
         foreach (var row in rows)
         {
             var call = BuildCall(method, row);
-            string invoke = (isStatic ? type : "sut") + "." + methodName + "(" + string.Join(", ", call.Args) + ")";
+            string invoke = isCtor
+                ? "new " + type + "(" + string.Join(", ", call.Args) + ")"
+                : (isStatic ? type : "sut") + "." + methodName + "(" + string.Join(", ", call.Args) + ")";
             if (ret.IsAsync) invoke = "await " + invoke;
             string desc = Escape("(" + string.Join(", ", call.Display) + ")");
 
