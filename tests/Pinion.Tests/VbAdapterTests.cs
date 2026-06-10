@@ -64,6 +64,34 @@ public class VbComplexityTests
     }
 }
 
+public class VbSourceScanTests
+{
+    private static string RepoRoot()
+    {
+        var dir = new DirectoryInfo(AppContext.BaseDirectory);
+        while (dir is not null && !File.Exists(Path.Combine(dir.FullName, "Pinion.slnx"))) dir = dir.Parent;
+        Assert.NotNull(dir);
+        return dir!.FullName;
+    }
+
+    [Fact]
+    public async Task Source_scan_fallback_analyzes_vb_without_msbuild()
+    {
+        // The test host doesn't register MSBuild, so MSBuildWorkspace.Create() fails and the adapter
+        // falls back to scanning .vb files directly — the path that makes VB analyze work on real legacy
+        // (non-SDK) projects. It must still produce correct IR (members, complexity, domain tags).
+        string vbproj = Path.Combine(RepoRoot(), "samples", "LegacyVb", "LegacyVb.vbproj");
+
+        var units = await new VisualBasicAdapter().AnalyzeAsync(vbproj, default);
+
+        var vat = units.FirstOrDefault(u => u.DisplayName == "InvoiceService.CalculateVat");
+        Assert.NotNull(vat);
+        Assert.Equal(7, vat!.CyclomaticComplexity);            // VB complexity computed from raw source
+        Assert.Contains("money", vat.DomainTags);              // name-based tagging, reused engine logic
+        Assert.True(vat.IsPublicEntryPoint);
+    }
+}
+
 public class VbLandmineDetectorTests
 {
     private static IReadOnlyList<string> Detect(

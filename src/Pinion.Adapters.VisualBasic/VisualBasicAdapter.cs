@@ -32,20 +32,16 @@ public sealed class VisualBasicAdapter : ILanguageAdapter
         string path = ResolveInputPath(projectOrSolutionPath);
         bool isProject = path.EndsWith(".vbproj", StringComparison.OrdinalIgnoreCase);
 
-        var ws = MSBuildWorkspace.Create();
-        ws.RegisterWorkspaceFailedHandler(e => _log?.Invoke($"[roslyn] {e.Diagnostic.Kind}: {e.Diagnostic.Message}"));
+        var (solution, workspace) = await LoadSolutionAsync(path, ct).ConfigureAwait(false);
         try
         {
-            Solution solution = path.EndsWith(".sln", StringComparison.OrdinalIgnoreCase) || path.EndsWith(".slnx", StringComparison.OrdinalIgnoreCase)
-                ? await ws.OpenSolutionAsync(path, cancellationToken: ct).ConfigureAwait(false)
-                : (await ws.OpenProjectAsync(path, cancellationToken: ct).ConfigureAwait(false)).Solution;
-
             var units = new List<CodeUnit>();
             foreach (var project in solution.Projects)
             {
                 ct.ThrowIfCancellationRequested();
                 if (project.Language != LanguageNames.VisualBasic) continue;
-                // Scope a single-project analyze to that project (don't pull in referenced projects' members).
+                // Scope a single-project analyze to that project (don't pull in referenced projects'
+                // members). The source-scan project has no file path — it IS the target — so never filter it.
                 if (isProject && project.FilePath is not null && !SamePath(project.FilePath, path)) continue;
 
                 var compilation = await project.GetCompilationAsync(ct).ConfigureAwait(false);
@@ -68,8 +64,39 @@ public sealed class VisualBasicAdapter : ILanguageAdapter
         }
         finally
         {
+            workspace?.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Load via MSBuild for full reference resolution; if that fails or yields no VB documents (no
+    /// MSBuild registered, a legacy non-SDK .vbproj that won't restore), fall back to scanning .vb files
+    /// directly so analyze still produces a report. Returns the workspace to dispose.
+    /// </summary>
+    private async Task<(Solution Solution, Workspace? Workspace)> LoadSolutionAsync(string path, CancellationToken ct)
+    {
+        try
+        {
+            var ws = MSBuildWorkspace.Create();
+            ws.RegisterWorkspaceFailedHandler(e => _log?.Invoke($"[roslyn] {e.Diagnostic.Kind}: {e.Diagnostic.Message}"));
+            Solution sol = path.EndsWith(".sln", StringComparison.OrdinalIgnoreCase) || path.EndsWith(".slnx", StringComparison.OrdinalIgnoreCase)
+                ? await ws.OpenSolutionAsync(path, cancellationToken: ct).ConfigureAwait(false)
+                : (await ws.OpenProjectAsync(path, cancellationToken: ct).ConfigureAwait(false)).Solution;
+
+            if (sol.Projects.Any(p => p.Language == LanguageNames.VisualBasic && p.DocumentIds.Count > 0))
+            {
+                _log?.Invoke("[analyze] resolved VB project via MSBuild (full type resolution).");
+                return (sol, ws);
+            }
             ws.Dispose();
         }
+        catch (Exception ex)
+        {
+            _log?.Invoke($"[analyze] MSBuild unavailable ({ex.GetType().Name}); scanning VB source — referenced types may not resolve.");
+        }
+
+        Solution scan = VbSourceScanLoader.Load(path, _log);
+        return (scan, scan.Workspace); // AdhocWorkspace, owned here → dispose
     }
 
     /// <summary>Methods, functions, and constructors with their declaration + (optional) body block.</summary>
