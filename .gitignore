@@ -29,3 +29,6 @@ TestResults/
 coverage.*
 *.trx
 StrykerOutput/
+
+# Generated proof artifacts (large; derived from third-party repos)
+proof/*.html
