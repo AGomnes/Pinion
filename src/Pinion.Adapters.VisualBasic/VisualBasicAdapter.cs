@@ -149,15 +149,23 @@ public sealed class VisualBasicAdapter : ILanguageAdapter
         IMethodSymbol Symbol, SyntaxNode Decl, MethodBlockBaseSyntax? Body,
         SemanticModel Model, IReadOnlyList<string> Imports, string Id);
 
-    /// <summary>Methods, functions, and constructors with their declaration + (optional) body block.</summary>
+    /// <summary>Every behaviour-carrying member: Sub/Function, constructors (Sub New), user-defined
+    /// operators/conversions, and explicit property Get/Set accessors (those with a body). Mirrors the C#
+    /// adapter, which analyzes computed property accessors too — without this, logic in VB property getters
+    /// (common in legacy WebForms domain models) would be silently omitted from the readiness report.</summary>
     private static IEnumerable<(IMethodSymbol Symbol, SyntaxNode Decl, MethodBlockBaseSyntax? Body)> BehaviorMembers(
         SyntaxNode root, SemanticModel model, CancellationToken ct)
     {
         foreach (var stmt in root.DescendantNodes().OfType<MethodBaseSyntax>())
         {
-            // Sub/Function declarations and constructors (Sub New). Skip Declare/Delegate/event statements.
-            if (stmt is not (MethodStatementSyntax or SubNewStatementSyntax)) continue;
+            // Auto-property accessors have no AccessorBlock (no AccessorStatementSyntax), so they never
+            // appear here. Declare/Delegate/event statements and event add/remove/raise handlers are
+            // filtered out by MethodKind below.
+            if (stmt is not (MethodStatementSyntax or SubNewStatementSyntax or OperatorStatementSyntax or AccessorStatementSyntax)) continue;
             if (model.GetDeclaredSymbol(stmt, ct) is not IMethodSymbol symbol) continue;
+            if (symbol.MethodKind is not (MethodKind.Ordinary or MethodKind.Constructor
+                or MethodKind.UserDefinedOperator or MethodKind.Conversion
+                or MethodKind.PropertyGet or MethodKind.PropertySet)) continue;
             yield return (symbol, stmt, stmt.Parent as MethodBlockBaseSyntax);
         }
     }
@@ -225,8 +233,7 @@ public sealed class VisualBasicAdapter : ILanguageAdapter
                 || name.IndexOf("MSTest", StringComparison.OrdinalIgnoreCase) >= 0)
                 return true;
         }
-        return project.Name.EndsWith("Tests", StringComparison.OrdinalIgnoreCase)
-            || project.Name.EndsWith("Test", StringComparison.OrdinalIgnoreCase);
+        return VbSymbols.LooksLikeTestName(project.Name);
     }
 
     private static CodeUnit ToCodeUnit(RawVb m, HashSet<string> callees, HashSet<string> callers, HashSet<string> refNames, HashSet<string> testedIds)

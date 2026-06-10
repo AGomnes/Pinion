@@ -37,11 +37,11 @@ internal sealed partial class CSharpDeterministicSynthesizer
 
         var (stream, state) = SeedFrom(seedKey);
         var pcg = new PCG(stream, state); // two-arg ctor = fully seeded (single-arg seeds state from time)
-        var seen = new HashSet<string>(rows.Select(r => string.Join("", r)));
+        var seen = new HashSet<string>(rows.Select(r => string.Join(RowKeySep, r)));
         for (int k = 0; k < MaxSampleRows; k++)
         {
             var row = gens.Select(g => g.Generate(pcg, null, out _)).ToList();
-            if (seen.Add(string.Join("", row))) rows.Add(row);
+            if (seen.Add(string.Join(RowKeySep, row))) rows.Add(row);
         }
     }
 
@@ -505,6 +505,11 @@ internal sealed partial class CSharpDeterministicSynthesizer
     private static bool CanStub(INamedTypeSymbol iface)
     {
         if (iface.TypeKind != TypeKind.Interface || !IsPubliclyAccessible(iface)) return false;
+        // EmitStub writes one implementation per distinct member display string. If two required members
+        // (from different inherited interfaces) render identically but aren't actually one implementation —
+        // the classic case is IEnumerable<T> : IEnumerable, whose two GetEnumerator()s differ only by return
+        // type — one collapses away and the other is left unimplemented (CS0535). Can't stub: fall back to default!.
+        var signatures = new HashSet<string>(StringComparer.Ordinal);
         foreach (var m in StubMembers(iface))
         {
             switch (m)
@@ -514,9 +519,11 @@ internal sealed partial class CSharpDeterministicSynthesizer
                         || method.ReturnsByRef || method.ReturnsByRefReadonly) return false;
                     if (method.Parameters.Any(p => p.RefKind is RefKind.Ref or RefKind.Out or RefKind.RefReadOnly))
                         return false;
+                    if (!signatures.Add(method.ToDisplayString())) return false;
                     break;
                 case IPropertySymbol { IsAbstract: true } p:
                     if (p.IsStatic || p.ReturnsByRef || p.ReturnsByRefReadonly) return false;
+                    if (!signatures.Add(p.ToDisplayString())) return false;
                     break;
                 case IEventSymbol { IsAbstract: true, IsStatic: true }:
                     return false;

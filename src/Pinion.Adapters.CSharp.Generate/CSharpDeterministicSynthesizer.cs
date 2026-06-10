@@ -1,4 +1,4 @@
-using System.Collections.Concurrent;
+﻿using System.Collections.Concurrent;
 using System.Globalization;
 using CsCheck;
 using Microsoft.CodeAnalysis;
@@ -31,6 +31,9 @@ internal sealed partial class CSharpDeterministicSynthesizer : IDisposable
     private const int MaxSampleRows = 16;
     // Per-test cap so one hanging/infinite-loop method fails just its own test, not the whole batch.
     private const int PerTestTimeoutMs = 30000;
+    // Delimiter for row de-dup keys — a char that can't appear in a C# source literal, so distinct rows
+    // like ["1","23"] and ["12","3"] don't collide on concatenation and silently drop a row.
+    private const string RowKeySep = "\u0001";
 
     private static readonly SymbolDisplayFormat FullyQualified = SymbolDisplayFormat.FullyQualifiedFormat;
 
@@ -421,14 +424,14 @@ internal sealed partial class CSharpDeterministicSynthesizer : IDisposable
 
         var baseRow = perParam.Select(c => c[0]).ToList();
         var rows = new List<List<string>> { baseRow };
-        var seen = new HashSet<string> { string.Join("", baseRow) };
+        var seen = new HashSet<string> { string.Join(RowKeySep, baseRow) };
 
         for (int i = 0; i < perParam.Count && rows.Count < MaxRows; i++)
         {
             for (int j = 1; j < perParam[i].Count && rows.Count < MaxRows; j++)
             {
                 var row = new List<string>(baseRow) { [i] = perParam[i][j] };
-                if (seen.Add(string.Join("", row))) rows.Add(row);
+                if (seen.Add(string.Join(RowKeySep, row))) rows.Add(row);
             }
         }
         return rows;

@@ -39,9 +39,29 @@ internal static class VbSymbols
     public static string DisplayName(IMethodSymbol method)
     {
         string typeName = method.ContainingType?.Name ?? "";
-        string name = method.MethodKind == MethodKind.Constructor ? "ctor" : method.Name;
+        string name = MemberLabel(method);
         return string.IsNullOrEmpty(typeName) ? name : $"{typeName}.{name}";
     }
+
+    // "InvoiceService.CalculateVat", "Cart.ctor", "Order.Total.get" — friendly report-row labels.
+    // Mirrors the C# adapter's RoslynSymbols.MemberLabel so VB property/operator members read the same.
+    private static string MemberLabel(IMethodSymbol method) => method.MethodKind switch
+    {
+        MethodKind.Constructor or MethodKind.StaticConstructor => "ctor",
+        MethodKind.PropertyGet => AssociatedName(method) + ".get",
+        MethodKind.PropertySet => AssociatedName(method) + ".set",
+        _ => method.Name, // ordinary Sub/Function, user-defined operators, conversions
+    };
+
+    private static string AssociatedName(IMethodSymbol accessor) => accessor.AssociatedSymbol?.Name ?? accessor.Name;
+
+    /// <summary>Name-based test heuristic — the fallback when a project doesn't reference a known test
+    /// framework. Deliberately plural/dotted ("…Tests", "….Test") so production names like "SmokeTest"
+    /// or "MyTest" aren't misclassified as tests (which would hide their code from the readiness report).</summary>
+    public static bool LooksLikeTestName(string name) =>
+        name.EndsWith("Tests", StringComparison.OrdinalIgnoreCase)
+        || name.EndsWith(".Test", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(name, "Test", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>Reachable from outside the assembly — its behaviour is a contract.</summary>
     public static bool IsPublicEntryPoint(IMethodSymbol method)

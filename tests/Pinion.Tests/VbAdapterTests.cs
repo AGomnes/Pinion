@@ -4,6 +4,7 @@ using Microsoft.CodeAnalysis.Text;
 using Microsoft.CodeAnalysis.VisualBasic;
 using Microsoft.CodeAnalysis.VisualBasic.Syntax;
 using Pinion.Adapters.VisualBasic;
+using Pinion.Engine.Model;
 using Xunit;
 
 namespace Pinion.Tests;
@@ -152,6 +153,72 @@ public class VbSourceScanTests
         Assert.True(add!.HasTests, "Add should be tested — units: " + dump);
         Assert.False(units.First(u => u.DisplayName == "Calc.Unused").HasTests);
         Assert.DoesNotContain(units, u => u.DisplayName == "CalcTests.AddsTwoNumbers"); // test members excluded
+    }
+}
+
+public class VbMemberGatheringTests
+{
+    // An in-memory single VB project (no MSBuild), with test-framework assemblies filtered from the refs
+    // so the production project isn't itself classified as a test project.
+    private static async Task<IReadOnlyList<CodeUnit>> Analyze(string vb)
+    {
+        var tpa = ((string)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES")!).Split(Path.PathSeparator);
+        string[] testMarkers = { "xunit", "testplatform", "testhost", "mstest", "nunit" };
+        var refs = tpa
+            .Where(p => p.EndsWith(".dll", StringComparison.OrdinalIgnoreCase))
+            .Where(p => !testMarkers.Any(m => Path.GetFileName(p).Contains(m, StringComparison.OrdinalIgnoreCase)))
+            .Select(p => (MetadataReference)MetadataReference.CreateFromFile(p)).ToList();
+
+        var ws = new AdhocWorkspace();
+        var id = ProjectId.CreateNewId();
+        var sol = ws.CurrentSolution.AddProject(ProjectInfo.Create(
+            id, VersionStamp.Default, "Prod", "Prod", LanguageNames.VisualBasic, metadataReferences: refs));
+        sol = sol.AddDocument(DocumentId.CreateNewId(id), "Src.vb", SourceText.From(vb));
+        return await new VisualBasicAdapter().AnalyzeSolutionAsync(sol, targetProjectPath: null, default);
+    }
+
+    [Fact]
+    public async Task Computed_property_getter_is_analyzed_but_auto_property_is_not()
+    {
+        // A property Get with real branch logic carries behaviour and must appear (with its decision
+        // counted); an auto-property has no accessor body and must be skipped. This is the parity gap with
+        // the C# adapter that silently dropped VB property logic from the readiness report.
+        var units = await Analyze("""
+            Namespace M
+                Public Class Account
+                    Private _balance As Decimal
+                    Public ReadOnly Property Status As String
+                        Get
+                            If _balance < 0D Then Return "overdrawn"
+                            Return "ok"
+                        End Get
+                    End Property
+                    Public Property Name As String
+                End Class
+            End Namespace
+            """);
+
+        string dump = "[" + string.Join(" | ", units.Select(u => u.DisplayName)) + "]";
+        var status = units.FirstOrDefault(u => u.DisplayName == "Account.Status.get");
+        Assert.True(status is not null, "computed property getter not analyzed — units: " + dump);
+        Assert.Equal(2, status!.CyclomaticComplexity);           // one If → 2
+        Assert.DoesNotContain(units, u => u.DisplayName.StartsWith("Account.Name")); // auto-property skipped
+    }
+
+    [Fact]
+    public async Task User_defined_operator_is_analyzed()
+    {
+        var units = await Analyze("""
+            Namespace M
+                Public Class Money
+                    Public Shared Operator +(a As Money, b As Money) As Money
+                        Return New Money()
+                    End Operator
+                End Class
+            End Namespace
+            """);
+
+        Assert.Contains(units, u => u.DisplayName.StartsWith("Money.op_"));
     }
 }
 

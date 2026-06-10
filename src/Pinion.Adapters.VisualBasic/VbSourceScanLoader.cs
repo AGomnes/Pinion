@@ -68,7 +68,7 @@ internal static class VbSourceScanLoader
     private static bool IsTestFile(string path)
     {
         string name = Path.GetFileNameWithoutExtension(path);
-        if (name.EndsWith("Tests", StringComparison.OrdinalIgnoreCase) || name.EndsWith("Test", StringComparison.OrdinalIgnoreCase))
+        if (VbSymbols.LooksLikeTestName(name))
             return true;
         if (path.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
                 .Any(s => s.EndsWith("Tests", StringComparison.OrdinalIgnoreCase)))
@@ -103,6 +103,13 @@ internal static class VbSourceScanLoader
             .Any(s => ExcludedDirs.Contains(s, StringComparer.OrdinalIgnoreCase));
     }
 
+    // Test-framework assemblies must NOT be referenced by the scanned production project: the adapter's
+    // IsTestProject classifies on these names, so leaving them in (they can appear in the host's TPA when
+    // Pinion itself runs under a test runner) would mark every scanned source project as a test project →
+    // zero analyzed members. Test detection still works via the "ScannedVbTests" project name.
+    private static readonly string[] TestFrameworkMarkers =
+        { "xunit", "nunit", "mstest", "testplatform", "testhost", "Microsoft.VisualStudio.TestTools" };
+
     private static IReadOnlyList<MetadataReference> RuntimeReferences()
     {
         if (AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES") is not string tpa || tpa.Length == 0)
@@ -112,6 +119,8 @@ internal static class VbSourceScanLoader
         foreach (var p in tpa.Split(Path.PathSeparator))
         {
             if (string.IsNullOrEmpty(p)) continue;
+            string file = Path.GetFileName(p);
+            if (TestFrameworkMarkers.Any(m => file.Contains(m, StringComparison.OrdinalIgnoreCase))) continue;
             try { refs.Add(MetadataReference.CreateFromFile(p)); }
             catch { /* skip unreadable */ }
         }
