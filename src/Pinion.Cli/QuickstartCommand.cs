@@ -88,7 +88,11 @@ internal static class QuickstartCommand
             var targets = allowSideEffects ? ranked : ranked.Where(u => !TargetGuards.IsSideEffecting(u)).ToList();
             int skipped = ranked.Count - targets.Count;
             if (skipped > 0)
-                Console.Error.WriteLine($"Skipped {skipped} method(s) tagged io/money (running them would cause side effects) — pass --allow-side-effects to include them.");
+                Console.Error.WriteLine($"Skipped {skipped} method(s) tagged io (running them would touch the filesystem/DB/network) — pass --allow-side-effects to include them.");
+
+            int sensitive = targets.Count(TargetGuards.IsSensitive);
+            if (sensitive > 0)
+                Console.Error.WriteLine($"note: {sensitive} money/auth-sensitive method(s) will be characterized — snapshots are secret-scrubbed, but review them before committing.");
 
             if (targets.Count == 0)
             {

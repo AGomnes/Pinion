@@ -12,11 +12,11 @@ public class TargetGuardsTests
             false, true, System.Array.Empty<string>());
 
     [Theory]
-    [InlineData(DomainTag.Io, true)]
-    [InlineData(DomainTag.Money, true)]
+    [InlineData(DomainTag.Io, true)]    // mutates the outside world → skip by default
+    [InlineData(DomainTag.Money, false)] // sensitivity, not a side effect → run (scrub the snapshot)
     [InlineData(DomainTag.Auth, false)]
     [InlineData(DomainTag.Date, false)]
-    public void SideEffecting_flags_io_and_money(string tag, bool expected)
+    public void SideEffecting_flags_io_only(string tag, bool expected)
     {
         Assert.Equal(expected, TargetGuards.IsSideEffecting(Unit(tags: tag)));
     }
@@ -25,6 +25,16 @@ public class TargetGuardsTests
     public void Untagged_method_is_not_side_effecting()
     {
         Assert.False(TargetGuards.IsSideEffecting(Unit()));
+    }
+
+    [Theory]
+    [InlineData(DomainTag.Money, true)]
+    [InlineData(DomainTag.Auth, true)]
+    [InlineData(DomainTag.Io, false)]
+    [InlineData(DomainTag.Date, false)]
+    public void Sensitive_flags_money_and_auth(string tag, bool expected)
+    {
+        Assert.Equal(expected, TargetGuards.IsSensitive(Unit(tags: tag)));
     }
 
     [Fact]

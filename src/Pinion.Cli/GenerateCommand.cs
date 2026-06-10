@@ -169,8 +169,9 @@ internal static class GenerateCommand
             if (matched.Count != notExcluded.Count)
                 Console.Error.WriteLine($"Excluded {matched.Count - notExcluded.Count} method(s) by exclude rules.");
 
-            // Side-effect safety: generating a test EXECUTES the method, so skip io/money-tagged
-            // ones (files/DB/network/payments) unless the user explicitly opts in.
+            // Side-effect safety: generating a test EXECUTES the method, so skip io-tagged ones
+            // (files/DB/network) unless the user explicitly opts in. money/auth are sensitivity tags,
+            // not side-effects — those run (snapshots are scrubbed), and are flagged below for review.
             List<CodeUnit> runnable;
             if (allowSideEffects)
             {
@@ -181,8 +182,12 @@ internal static class GenerateCommand
                 runnable = notExcluded.Where(u => !TargetGuards.IsSideEffecting(u)).ToList();
                 int skipped = notExcluded.Count - runnable.Count;
                 if (skipped > 0)
-                    Console.Error.WriteLine($"Skipped {skipped} method(s) tagged io/money that may have side effects when run — pass --allow-side-effects to include them.");
+                    Console.Error.WriteLine($"Skipped {skipped} method(s) tagged io that may touch the filesystem/DB/network when run — pass --allow-side-effects to include them.");
             }
+
+            int sensitive = runnable.Count(TargetGuards.IsSensitive);
+            if (sensitive > 0)
+                Console.Error.WriteLine($"note: {sensitive} money/auth-sensitive method(s) will be characterized — snapshots are secret-scrubbed, but review them before committing.");
 
             if (runnable.Count == 0)
             {

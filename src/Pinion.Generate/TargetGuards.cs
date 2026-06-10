@@ -4,16 +4,28 @@ using Pinion.Engine.Model;
 namespace Pinion.Generate;
 
 /// <summary>
-/// Safety filters for which methods `generate` will run. Generating a test EXECUTES the target
-/// method, so a method that touches the filesystem, a database, the network, or money could cause
-/// real side effects (delete data, send email, charge a card) when characterized. These guards
-/// keep such methods out of a run unless explicitly allowed, and let the user exclude anything.
+/// Safety filters for which methods `generate` will run. Generating a test EXECUTES the target method,
+/// so a method that mutates the outside world — filesystem, database, network — could cause real side
+/// effects (delete data, send email) when characterized. These guards keep such methods out of a run
+/// unless explicitly allowed, and let the user exclude anything.
 /// </summary>
 public static class TargetGuards
 {
-    /// <summary>True if the method is tagged as potentially side-effecting (io) or money-touching.</summary>
+    /// <summary>
+    /// True if running the method could mutate the outside world — i.e. it's tagged <c>io</c>
+    /// (filesystem/DB/network). Deliberately NOT keyed on <c>money</c>/<c>auth</c>: those are
+    /// SENSITIVITY tags (about the data), not side-effect signals — a pure pricing/total calculation
+    /// touches money but mutates nothing, and a payment that really moves money does so through I/O
+    /// (gated here) or an injected collaborator (a no-op stub during characterization, so nothing fires).
+    /// Sensitivity is handled separately: snapshots are secret-scrubbed and <c>--no-send</c> controls egress.
+    /// </summary>
     public static bool IsSideEffecting(CodeUnit unit) =>
-        unit.DomainTags.Contains(DomainTag.Io) || unit.DomainTags.Contains(DomainTag.Money);
+        unit.DomainTags.Contains(DomainTag.Io);
+
+    /// <summary>True if the method handles sensitive data (money/auth). Not a reason to skip running it,
+    /// but a reason to flag its captured snapshot for review (it's scrubbed, but eyeball it before committing).</summary>
+    public static bool IsSensitive(CodeUnit unit) =>
+        unit.DomainTags.Contains(DomainTag.Money) || unit.DomainTags.Contains(DomainTag.Auth);
 
     /// <summary>True if any exclusion pattern matches the unit's file path, display name, or id.
     /// An excluded method is dropped from the run entirely — never run, never sent.</summary>
