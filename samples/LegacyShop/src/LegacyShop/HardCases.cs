@@ -35,6 +35,11 @@ public class HardCases
 
     public void Bump(ref int counter, int by) => counter += by;
 
+    // Non-deterministic: reads the wall clock, so its captured value differs every run. The generator
+    // must NOT ship this as a golden master — it should detect the flake on the confirm run and quarantine
+    // it with a "needs a seam (DateTime.Now)" diagnosis rather than emit a snapshot that fails every verify.
+    public long TicksNow() => System.DateTime.Now.Ticks;
+
     public T Echo<T>(T input) => input; // generic — deterministic generator should skip cleanly
 
     public int Combine(int a, int b) => a + b;            // overload 1

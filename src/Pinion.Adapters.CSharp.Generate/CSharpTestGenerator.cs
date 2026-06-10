@@ -136,16 +136,36 @@ public sealed class CSharpTestGenerator : IGenerationAdapter, IDisposable
             }
         }
 
-        // 4. One confirming run.
+        // 4. One confirming run: re-run the now-locked suite and make sure each snapshot actually passes.
         var confirm = await ProcessRunner.RunAsync("dotnet", args, env: env, timeout: timeout, ct: ct).ConfigureAwait(false);
         bool buildOk = !confirm.TimedOut && !HasBuildError(confirm.Combined);
 
         foreach (var (u, t) in active)
         {
-            string? snapshot = Directory.GetFiles(outDir, t.TestClassName + ".*.verified.*").FirstOrDefault();
-            bool ok = snapshot is not null && buildOk;
-            results[u] = new GenerationResult(u, ok, 1, t.FilePath, snapshot,
-                ok ? Array.Empty<string>() : new[] { confirm.TimedOut ? "confirm run timed out" : "snapshot not captured" });
+            var verified = Directory.GetFiles(outDir, t.TestClassName + ".*.verified.*");
+            string? snapshot = verified.FirstOrDefault();
+
+            if (!buildOk)
+            {
+                results[u] = new GenerationResult(u, false, 1, t.FilePath, snapshot,
+                    new[] { confirm.TimedOut ? "confirm run timed out" : "build failed on the confirm run" });
+                continue;
+            }
+
+            // Verify writes a fresh *.received ONLY when the confirm run's output differs from the locked
+            // snapshot — i.e. the method is non-deterministic. A flaky golden master fails every future
+            // `verify`, so quarantine it: drop the test + its snapshot and report the cause + remedy.
+            var received = Directory.GetFiles(outDir, t.TestClassName + ".*.received.*");
+            if (received.Length > 0)
+            {
+                foreach (var f in verified.Concat(received)) { try { File.Delete(f); } catch { } }
+                try { File.Delete(t.FilePath); } catch { }
+                results[u] = new GenerationResult(u, false, 1, null, null, new[] { FlakyDiagnosis.Explain(u) });
+                continue;
+            }
+
+            results[u] = new GenerationResult(u, snapshot is not null, 1, t.FilePath, snapshot,
+                snapshot is not null ? Array.Empty<string>() : new[] { "snapshot not captured" });
         }
 
         return InOrder(ordered, results);
@@ -276,8 +296,23 @@ public sealed class CSharpTestGenerator : IGenerationAdapter, IDisposable
             if (HasBuildError(second.Combined))
                 return new ExecutionResult(false, false, ExtractCompilerErrors(second.Combined), null);
 
-            bool passed = second.ExitCode == 0;
-            return new ExecutionResult(true, passed, passed ? Array.Empty<string>() : Tail(second.Combined), snapshot);
+            if (second.ExitCode == 0)
+                return new ExecutionResult(true, true, Array.Empty<string>(), snapshot);
+
+            // The confirm run failed. Verify re-emits *.received only when the output differs from the
+            // snapshot we just locked — i.e. the method is non-deterministic. Quarantine the flaky golden
+            // master (and its test) and report the cause, instead of shipping a snapshot that will fail
+            // every future `verify`.
+            var reappeared = Directory.GetFiles(outDir, test.TestClassName + ".*.received.*");
+            if (reappeared.Length > 0)
+            {
+                foreach (var f in Directory.GetFiles(outDir, test.TestClassName + ".*.verified.*").Concat(reappeared))
+                    { try { File.Delete(f); } catch { } }
+                try { File.Delete(test.FilePath); } catch { }
+                return new ExecutionResult(true, false, new[] { FlakyDiagnosis.Explain(test.Unit) }, null);
+            }
+
+            return new ExecutionResult(true, false, Tail(second.Combined), snapshot);
         }
 
         if (first.ExitCode == 0)

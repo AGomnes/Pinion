@@ -86,6 +86,40 @@ public class EndToEndGenerationTests
     }
 
     [Fact]
+    public async Task Nondeterministic_method_is_quarantined_with_a_seam_diagnosis()
+    {
+        string sampleRoot = Path.Combine(RepoRoot(), "samples", "LegacyShop");
+        string hardCases = Path.Combine(sampleRoot, "src", "LegacyShop", "HardCases.cs");
+        string testProject = Path.Combine(sampleRoot, "tests", "LegacyShop.Tests", "LegacyShop.Tests.csproj");
+        string outDir = Path.Combine(Path.GetDirectoryName(testProject)!, "PinionCharacterization");
+
+        // TicksNow returns DateTime.Now.Ticks — its captured value differs between the capture run and the
+        // confirm run, so it must NOT be locked. The pipeline should detect the flake on the confirm run and
+        // quarantine it (drop the test + snapshot) with a diagnosis that names the ambient dependency.
+        var ticks = UnitAt(hardCases, "HardCases.TicksNow", "TicksNow") with { SeamObstacles = new[] { "DateTime.Now" } };
+
+        if (Directory.Exists(outDir)) Directory.Delete(outDir, recursive: true);
+        try
+        {
+            using var gen = new CSharpTestGenerator();
+            gen.ConfigureGeneration(testProject);
+            var results = await gen.GenerateDeterministicBatchAsync(new[] { ticks }, sampleRoot, default);
+
+            var r = results.Single();
+            Assert.False(r.Success, "a non-deterministic method must not be reported as locked");
+            string diag = string.Join(" | ", r.Diagnostics);
+            Assert.Contains("non-deterministic", diag, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("DateTime.Now", diag); // names the cause from the seam analysis
+            // Quarantined: no flaky golden master left behind to fail future verifies.
+            Assert.Empty(Directory.GetFiles(outDir, "*TicksNow*.verified.*"));
+        }
+        finally
+        {
+            if (Directory.Exists(outDir)) { try { Directory.Delete(outDir, recursive: true); } catch { } }
+        }
+    }
+
+    [Fact]
     public async Task Tier1_regression_shapes_compile_run_and_capture()
     {
         string sampleRoot = Path.Combine(RepoRoot(), "samples", "LegacyShop");
