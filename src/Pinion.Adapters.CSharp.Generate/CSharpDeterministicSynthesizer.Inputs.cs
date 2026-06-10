@@ -197,9 +197,9 @@ internal sealed partial class CSharpDeterministicSynthesizer
                 }
                 else if (ElementType(t) is { } elem)
                 {
-                    // Collection: one-element arrays, each holding a different constructed element, so
+                    // Collection: one-element values, each holding a different constructed element, so
                     // branches that test the element's FIELDS (e.g. line.Quantity >= 100) get reached.
-                    foreach (var e in ElementCandidates(elem, mined)) values.Add($"new[] {{ {e} }}");
+                    foreach (var e in ElementCandidates(elem, mined)) values.Add(CollectionLiteral(t, e));
                 }
                 else if (t is INamedTypeSymbol nt && AccessibleCtor(nt) is not null)
                 {
@@ -649,7 +649,7 @@ internal sealed partial class CSharpDeterministicSynthesizer
         {
             var element = ElementType(type);
             if (element is not null)
-                return $"new[] {{ {BuildValue(element, depth + 1)} }}";
+                return CollectionLiteral(type, BuildValue(element, depth + 1));
 
             if (type is INamedTypeSymbol named && AccessibleCtor(named) is { } ctor)
             {
@@ -680,6 +680,38 @@ internal sealed partial class CSharpDeterministicSynthesizer
         type is INamedTypeSymbol { OriginalDefinition.SpecialType: SpecialType.System_Nullable_T } n
             ? n.TypeArguments[0]
             : type;
+
+    /// <summary>
+    /// A single-element collection literal whose static type satisfies <paramref name="type"/>. An array
+    /// literal is assignable to arrays and the BCL collection INTERFACES (IEnumerable&lt;T&gt;, IList&lt;T&gt;,
+    /// IReadOnlyList&lt;T&gt;, …) but NOT to a concrete <c>List&lt;T&gt;</c>/<c>HashSet&lt;T&gt;</c> — so for a
+    /// concrete collection use a collection initializer on the real type (or an empty instance when it has
+    /// no single-arg <c>Add</c>, e.g. Queue/Stack). Without this, a <c>List&lt;int&gt;</c> parameter gets an
+    /// <c>int[]</c> and the test fails to compile (found dogfooding nopCommerce).
+    /// </summary>
+    private static string CollectionLiteral(ITypeSymbol type, string element)
+    {
+        if (type is IArrayTypeSymbol || IsArrayCompatibleInterface(type))
+            return $"new[] {{ {element} }}";
+
+        if (type is INamedTypeSymbol named
+            && named.InstanceConstructors.Any(c => c.Parameters.Length == 0 && c.DeclaredAccessibility == Accessibility.Public))
+        {
+            string fq = named.ToDisplayString(FullyQualified);
+            bool hasAdd = named.GetMembers("Add").OfType<IMethodSymbol>()
+                .Any(m => m.Parameters.Length == 1 && m.DeclaredAccessibility == Accessibility.Public);
+            return hasAdd ? $"new {fq} {{ {element} }}" : $"new {fq}()"; // empty when no Add (compiles; drops the element)
+        }
+
+        return $"new[] {{ {element} }}"; // best effort for an interface we didn't enumerate
+    }
+
+    private static bool IsArrayCompatibleInterface(ITypeSymbol t) =>
+        t.TypeKind == TypeKind.Interface && t.OriginalDefinition.ToDisplayString() is
+            "System.Collections.Generic.IEnumerable<T>" or "System.Collections.Generic.ICollection<T>"
+            or "System.Collections.Generic.IList<T>" or "System.Collections.Generic.IReadOnlyCollection<T>"
+            or "System.Collections.Generic.IReadOnlyList<T>"
+            or "System.Collections.IEnumerable" or "System.Collections.ICollection" or "System.Collections.IList";
 
     private static ITypeSymbol? ElementType(ITypeSymbol type)
     {

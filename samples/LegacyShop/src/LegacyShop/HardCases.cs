@@ -17,6 +17,15 @@ public class HardCases
         if (n < 0) throw new ArgumentOutOfRangeException(nameof(n));
     }
 
+    // Takes a CONCRETE List<int> — an int[] literal isn't assignable to it, so the synthesizer must
+    // emit a List initializer, not `new[] { … }` (found dogfooding nopCommerce).
+    public int SumList(System.Collections.Generic.List<int> values)
+    {
+        int s = 0;
+        foreach (var v in values) s += v;
+        return s;
+    }
+
     public bool TryDouble(string text, out int value)
     {
         if (int.TryParse(text, out int parsed)) { value = parsed * 2; return true; }

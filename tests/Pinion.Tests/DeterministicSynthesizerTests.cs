@@ -269,6 +269,15 @@ public class DeterministicSynthesizerTests
     }
 
     [Fact]
+    public void Concrete_List_parameter_uses_a_list_initializer_not_an_array()
+    {
+        // int[] is not assignable to List<int>; the synthesizer must construct the concrete type.
+        string src = Synth("SumList");
+        Assert.Contains("new global::System.Collections.Generic.List<int>", src);
+        Assert.DoesNotContain("SumList(new[]", src); // no bare array literal passed as the List<int> arg
+    }
+
+    [Fact]
     public void Service_interface_dependency_is_stubbed_not_null()
     {
         // PriceQuoter injects IRate (a service interface with no construction path). The synthesizer
