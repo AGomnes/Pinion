@@ -24,6 +24,7 @@ public static class PinionCli
         root.Subcommands.Add(GenerateCommand.Build());
         root.Subcommands.Add(InitTestsCommand.Build());
         root.Subcommands.Add(VerifyCommand.Build());
+        root.Subcommands.Add(AcceptCommand.Build());
         root.Subcommands.Add(ProveCommand.Build());
         root.Subcommands.Add(CiCommand.Build());
         root.Subcommands.Add(LicenseCommand.Build());

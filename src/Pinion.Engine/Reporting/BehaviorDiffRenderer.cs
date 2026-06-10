@@ -63,6 +63,12 @@ public static class BehaviorDiffRenderer
             sb.AppendLine();
             i++;
         }
+
+        // Triage: connect the diff to the next action. An intended change is re-baselined; the rest are regressions.
+        sb.AppendLine(new string('─', 60));
+        sb.AppendLine("TRIAGE — review each diff above:");
+        sb.AppendLine($"  • Intended?  re-baseline it:  pinion accept \"{report.TestProject}\" --name <method>");
+        sb.AppendLine("  • Unexpected?  it's a regression — fix the code, not the snapshot.");
         return sb.ToString();
     }
 
