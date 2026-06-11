@@ -502,9 +502,13 @@ internal sealed partial class CSharpDeterministicSynthesizer
     /// <summary>An interface implementable with trivial members and referenceable from the test
     /// assembly. Skips (→ falls back to default!) anything with generic methods, ref/out params,
     /// by-ref returns, or static-abstract members — keeping emitted stubs compilable.</summary>
-    private static bool CanStub(INamedTypeSymbol iface)
+    internal static bool CanStub(INamedTypeSymbol iface)
     {
         if (iface.TypeKind != TypeKind.Interface || !IsPubliclyAccessible(iface)) return false;
+        // An inherited interface that didn't resolve (an error type — e.g. it lives in a NuGet package that
+        // didn't restore on a source scan, like Ardalis `IRepositoryBase<T>`) hides its members, so the stub
+        // would be missing them and fail to compile (CS0535) against the real assembly. Fall back to default!.
+        if (iface.AllInterfaces.Any(i => i.TypeKind == TypeKind.Error)) return false;
         // EmitStub writes one implementation per distinct member display string. If two required members
         // (from different inherited interfaces) render identically but aren't actually one implementation —
         // the classic case is IEnumerable<T> : IEnumerable, whose two GetEnumerator()s differ only by return
