@@ -68,6 +68,7 @@ public sealed class VisualBasicAdapter : ILanguageAdapter
                 foreach (var tree in compilation.SyntaxTrees)
                 {
                     ct.ThrowIfCancellationRequested();
+                    if (GeneratedCode.IsGenerated(tree.FilePath)) continue; // skip My Project / *.designer.vb noise
                     var model = compilation.GetSemanticModel(tree);
                     var root = await tree.GetRootAsync(ct).ConfigureAwait(false);
                     var imports = FileImports(root);

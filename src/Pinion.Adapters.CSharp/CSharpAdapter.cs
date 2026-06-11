@@ -137,6 +137,7 @@ public sealed class CSharpAdapter : ILanguageAdapter
             foreach (var tree in compilation.SyntaxTrees)
             {
                 ct.ThrowIfCancellationRequested();
+                if (GeneratedCode.IsGenerated(tree.FilePath)) continue; // skip *.Designer.cs / *.g.cs noise
                 var model = compilation.GetSemanticModel(tree);
                 var root = await tree.GetRootAsync(ct).ConfigureAwait(false);
                 var usings = CSharpSyntaxFacts.FileUsings(root);
