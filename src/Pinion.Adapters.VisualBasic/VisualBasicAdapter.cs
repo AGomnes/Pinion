@@ -81,6 +81,15 @@ public sealed class VisualBasicAdapter : ILanguageAdapter
             foreach (var m in raw) byId.TryAdd(m.Id, m); // first declaration wins (partials/overloads share an id rarely)
             var knownIds = byId.Keys.ToHashSet(StringComparer.Ordinal);
 
+            // Syntactic (name, arity) → ids index, to recover calls Roslyn can't resolve on source-scanned
+            // (unrestored) VB — parity with the C# adapter's blast-radius fallback.
+            var nameArity = new Dictionary<(string, int), List<string>>();
+            foreach (var m in byId.Values)
+            {
+                var key = (m.Symbol.Name, m.Symbol.Parameters.Length);
+                (nameArity.TryGetValue(key, out var list) ? list : nameArity[key] = new()).Add(m.Id);
+            }
+
             // Pass 2: call graph (callees within the analyzed set → callers) + referenced names for tagging.
             var calleesById = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
             var refNamesById = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
@@ -88,7 +97,7 @@ public sealed class VisualBasicAdapter : ILanguageAdapter
             foreach (var m in byId.Values)
             {
                 ct.ThrowIfCancellationRequested();
-                var (callees, refNames) = AnalyzeBody(m, knownIds, ct);
+                var (callees, refNames) = AnalyzeBody(m, knownIds, nameArity, ct);
                 calleesById[m.Id] = callees;
                 refNamesById[m.Id] = refNames;
                 foreach (var callee in callees)
@@ -173,7 +182,8 @@ public sealed class VisualBasicAdapter : ILanguageAdapter
     /// <summary>Resolve calls/constructions in a member's body into in-graph callee ids (blast radius)
     /// plus a bag of referenced names that sharpen domain tagging.</summary>
     private static (HashSet<string> Callees, HashSet<string> RefNames) AnalyzeBody(
-        RawVb m, HashSet<string> knownIds, CancellationToken ct)
+        RawVb m, HashSet<string> knownIds,
+        IReadOnlyDictionary<(string, int), List<string>> nameArity, CancellationToken ct)
     {
         var callees = new HashSet<string>(StringComparer.Ordinal);
         var refNames = new HashSet<string>(StringComparer.Ordinal);
@@ -182,16 +192,43 @@ public sealed class VisualBasicAdapter : ILanguageAdapter
         foreach (var node in m.Body.DescendantNodes())
         {
             if (node is not (InvocationExpressionSyntax or ObjectCreationExpressionSyntax)) continue;
-            if (m.Model.GetSymbolInfo(node, ct).Symbol is not IMethodSymbol called) continue;
 
-            refNames.Add(called.Name);
-            if (called.ContainingType is { } type) refNames.Add(type.Name);
+            var info = m.Model.GetSymbolInfo(node, ct);
+            // Prefer the resolved symbol; on unrestored VB fall back to the overload candidates Roslyn knew
+            // but couldn't pick, so the call graph stays populated.
+            IMethodSymbol? called = info.Symbol as IMethodSymbol
+                ?? info.CandidateSymbols.OfType<IMethodSymbol>().FirstOrDefault();
 
-            string calleeId = VbSymbols.MethodId(called.OriginalDefinition);
-            if (calleeId != m.Id && knownIds.Contains(calleeId)) callees.Add(calleeId);
+            if (called is not null)
+            {
+                refNames.Add(called.Name);
+                if (called.ContainingType is { } type) refNames.Add(type.Name);
+
+                string calleeId = VbSymbols.MethodId(called.OriginalDefinition);
+                if (calleeId != m.Id && knownIds.Contains(calleeId)) callees.Add(calleeId);
+                continue;
+            }
+
+            // Fully unresolved (typical on a source scan of legacy VB): recover blast-radius with a
+            // SYNTACTIC name+arity match, used only when UNAMBIGUOUS (exactly one in-set member).
+            if (node is InvocationExpressionSyntax inv && InvokedName(inv) is { } name)
+            {
+                refNames.Add(name);
+                int arity = inv.ArgumentList?.Arguments.Count ?? 0;
+                if (nameArity.TryGetValue((name, arity), out var ids) && ids.Count == 1 && ids[0] != m.Id)
+                    callees.Add(ids[0]);
+            }
         }
         return (callees, refNames);
     }
+
+    /// <summary>The simple method name invoked, syntactically — for the resolution-free blast-radius fallback.</summary>
+    private static string? InvokedName(InvocationExpressionSyntax inv) => inv.Expression switch
+    {
+        MemberAccessExpressionSyntax ma => ma.Name.Identifier.ValueText, // obj.Method() / Me.Method()
+        IdentifierNameSyntax id => id.Identifier.ValueText,              // Method()
+        _ => null,
+    };
 
     /// <summary>Walk every VB test project's calls/constructions and record the production member ids
     /// they reference — symbol-level, so the "untested" count is a fact, not a guess.</summary>
