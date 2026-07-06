@@ -34,9 +34,14 @@ writes characterization tests that lock current behavior, with a compile→run�
 
 Since then the **deterministic** generator (the default — AI is opt-in, last-resort) has been deepened
 with **conjunctive string + regex guard solvers** that reach branches the constant-miner can't (with
-measured per-method mutation-score lifts in the `prove` flywheel below); the API-key/secret boundary has
-been hardened; and **`pinion init-tests`** scaffolds the host test project. The engine has been dogfooded
-on real .NET Framework legacy apps (WebForms/WCF/EF6) and clean-architecture code.
+measured per-method mutation-score lifts in the `prove` flywheel below), plus **constructor
+characterization** and **non-determinism quarantine** (a flaky golden master is detected on capture and
+rejected with a seam diagnosis). The workflow has grown ends: **`pinion quickstart`** is the one-command
+golden path (analyze → scaffold → lock your riskiest behaviors), **`pinion seam`** automatically
+introduces Feathers seams for ambient values so untestable methods become lockable, **`verify --since`**
+scopes a PR check to what a change touched, and **`pinion accept`** re-baselines intended changes.
+The engine has been dogfooded on real code (NodaTime, Humanizer, eShopOnWeb, nopCommerce) and real
+.NET Framework legacy apps (WebForms/WCF/EF6); `analyze` also speaks **VB.NET**.
 
 ---
 
@@ -46,7 +51,8 @@ Pinion ships as a **.NET tool**:
 
 ```pwsh
 dotnet tool install -g Pinion      # then `pinion` is on PATH
-pinion analyze .
+pinion analyze .                   # free migration-readiness audit
+pinion quickstart <code.csproj>    # …or go straight to locking your riskiest behaviors
 ```
 
 On a **locked-down machine** (some enterprise Windows policies block unsigned `.exe` shims), install it
@@ -151,14 +157,57 @@ dotnet src/Pinion.Cli/bin/Debug/net10.0/pinion.dll analyze samples/LegacyShop/Le
 
 | Option | Default | Meaning |
 |---|---|---|
-| `<path>` | — | `.sln` / `.csproj` / directory to scan |
-| `-f, --format` | `console` | `console`, `markdown`, or `json` |
+| `<path>` | — | `.sln` / `.csproj` / `.vbproj` / directory to scan (VB.NET routes to the VB adapter) |
+| `-f, --format` | `console` | `console`, `markdown`, `json`, or `html` (the offline dashboard) |
 | `-o, --out <file>` | — | also write the rendered report to a file |
+| `--open` | off | open the rendered report in the browser (a static file — no server is started) |
 | `--top <n>` | `0` (all) | show only the top N hotspots |
 | `--threshold <d>` | `3.5` | risk at/above which an untested method is "high-risk" |
 | `--coverage` | off | run the target's tests under Coverlet and include executed coverage % (slower) |
+| `--mutation-report <f>` | — | overlay per-file mutation scores in the HTML report (from `prove --report-json`) |
 | `--include-refs` | off | when the target is a single `.csproj`, also analyze its referenced projects (default: just the target project) |
 | `-v, --verbose` | off | print Roslyn/MSBuild diagnostics to stderr |
+
+## `quickstart` — the one-command golden path
+
+The fastest way from "installed" to "my riskiest behavior is locked": analyze the code, pick the
+highest-risk untested public methods, **scaffold the host test project if you don't have one**, and
+lock them as golden masters — one command, offline, no AI, $0.
+
+```pwsh
+pinion quickstart <code.csproj>              # lock the top 10 riskiest behaviors
+pinion quickstart <code.csproj> --top 25     # go wider
+pinion quickstart <code.csproj> --dry-run    # show what would be locked; write nothing
+```
+
+It skips `io`-tagged methods by default (running them would touch the filesystem/DB/network — pass
+`--allow-side-effects` to include them), notes when money/auth-sensitive methods are characterized
+(snapshots are secret-scrubbed; review before committing), and ends with the exact `verify` command
+that proves your migration later. `--test-project` / `--tfm` are available when the defaults don't fit.
+
+## `seam` — make untestable methods lockable
+
+`analyze` flags methods that hard-wire ambient values (`needs seam: DateTime.Now`). `pinion seam`
+**introduces the Feathers seam automatically**: the original signature becomes a delegating wrapper —
+every existing caller compiles and behaves identically — and the real body moves to an overload whose
+ambient values are parameters, which is deterministic and therefore lockable:
+
+```csharp
+public long TicksNow() => TicksNow(DateTime.Now);                       // wrapper: callers unchanged
+public long TicksNow(global::System.DateTime now) => now.Ticks;        // overload: generate can lock it
+```
+
+```pwsh
+pinion seam <path>                    # preview: per-method diffs, writes NOTHING
+pinion seam <path> --target Invoice   # scope by method/type name
+pinion seam <path> --apply            # write — compile-checked, and REVERTED if the build breaks
+```
+
+Handles `DateTime.Now/UtcNow/Today`, `DateTimeOffset.Now/UtcNow`, and `Guid.NewGuid()` — including
+async methods, overrides, name collisions, and attributes; re-running is idempotent. Resource
+obstacles (`File`, `HttpClient`, `SqlConnection`, …) need a *designed* abstraction, so they're
+deliberately left flagged as manual rather than guessed at. Editing your source is the highest-trust
+action in the product — hence preview-by-default and the build-gated, self-reverting apply.
 
 ## `generate` (paid AI tier)
 
@@ -297,6 +346,18 @@ CHANGED METHODS
 - If the suite no longer compiles, `verify` reports that the **migration broke the build** rather than
   guessing about behavior.
 
+**Scope a PR check with `--since`.** On a big suite you don't re-run everything for a 3-line change:
+`pinion verify <test.csproj> --since main` re-verifies only the behaviors the change could move —
+methods in files changed since the git ref **plus their transitive callers** (from the call graph).
+"Nothing affected" exits 0. It's a speed optimization for PR feedback; keep the full `verify` as the
+authoritative pre-merge gate (static call graphs can't see reflection/DI dispatch).
+
+**Triage with `accept`.** When `verify` shows changes, some are *intended* (you fixed a bug on
+purpose). `pinion accept <test.csproj> --name <method>` re-baselines those — promotes the current
+output to the golden master (scrubbed) — so the suite tracks the new expected behavior and what
+remains is a real regression. It requires an explicit scope (`--name` or `--all`): accepting is
+destructive, so it never happens by accident.
+
 ## `prove` — do the tests actually catch regressions?
 
 A characterization test only has value if it **fails when behavior changes**. `pinion prove` runs
@@ -399,7 +460,8 @@ minting code live in a separate vendor-only tool that never ships.
 
 ```pwsh
 # Customer side (shipped product — verify only, fully offline):
-pinion license verify                 # check the current license
+pinion license activate <key>         # install a key (~/.pinion/license; --local for this project only)
+pinion license verify                 # check the current license (warns when it's within 7 days of expiry)
 pinion license machine-id             # this machine's fingerprint — send it to the vendor
 pinion generate … --dry-run           # preview is free, no license required
 
@@ -537,13 +599,17 @@ references won't restore on a modern box.
 
 ```
 src/Pinion.Engine                  FREE: IR, risk scoring, domain tagging, report renderers
-src/Pinion.Adapters.CSharp         FREE: Roslyn analyze — call graph, landmines, coverage
-src/Pinion.Generate                PAID: LLM client, scrubber, prompts, orchestrator
+src/Pinion.Adapters.CSharp         FREE: Roslyn analyze — call graph, landmines, seams, coverage
+src/Pinion.Adapters.VisualBasic    FREE: VB.NET analyze adapter (same IR, MSBuild + source-scan)
+src/Pinion.Generate                PAID: LLM client, scrubber, prompts, orchestrator, licensing
 src/Pinion.Adapters.CSharp.Generate PAID: C# extract + emit + compile/run/snapshot
 src/Pinion.Cli                     `pinion` global tool (bundles both tiers)
-tests/Pinion.Tests                 engine, analyze, landmine, generation, and guard-solver tests (170)
+tests/Pinion.Tests                 engine, analyze, landmine, generation, seam, and licensing tests (230+)
 samples/LegacyShop           a deliberately under-tested sample (risk + blast radius + coverage)
+samples/LegacyVb             the VB.NET analog (VB adapter: complexity, call graph, landmines)
 samples/LegacyWeb            legacy WebForms/WCF/EF6 fixtures (landmine detection)
 samples/LegacyFramework      classic non-SDK v4.8 .csproj (source-scan fallback)
 PINION_SPEC.md               the source-of-truth build brief
+CHANGELOG.md                 release history (Keep a Changelog)
+TRUST.md                     code-accurate data-handling statement (what leaves the machine, per command)
 ```
