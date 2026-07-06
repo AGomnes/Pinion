@@ -16,6 +16,11 @@ First release candidate — the full local-first workflow, pending public publis
   tags, Feathers seam analysis, migration landmines, and a self-contained HTML dashboard.
 - `quickstart` — one command to lock your riskiest behaviors: analyze → scaffold a test project →
   characterize, fully offline.
+- `seam` — turn the seam report into treatment: automatically introduce Feathers seams for ambient
+  values (`DateTime.Now`, `Guid.NewGuid`, …). The original signature becomes a delegating wrapper
+  (existing callers unchanged); the real body moves to an overload whose ambient values are parameters,
+  which `generate` can then lock deterministically. Preview-by-default; applied edits are compile-gated
+  and reverted if the build breaks. Resource obstacles (File, HttpClient, …) stay flagged as manual.
 - `generate` — deterministic characterization-test synthesis (no AI, reproducible), with an opt-in
   Anthropic provider. Handles constructors, async, ref/out, throwing getters, interface stubs, and
   framework value maps; non-deterministic targets are detected and quarantined with a seam diagnosis.
