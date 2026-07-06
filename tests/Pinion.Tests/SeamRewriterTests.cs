@@ -189,6 +189,30 @@ public class SeamRewriterTests
     }
 
     [Fact]
+    public void Seam_params_are_inserted_before_optional_and_params_parameters()
+    {
+        // Found dogfooding eShopOnWeb: appending a required seam param after `string token = null`
+        // is CS1737. Seam params must slot in before optionals (and before a `params` array).
+        string rewritten = Rewrite("""
+            using System;
+            public class C
+            {
+                public string A(string user, string token = null) => user + token + DateTime.UtcNow.Ticks;
+                public string B(params int[] xs) => xs.Length + ":" + Guid.NewGuid();
+            }
+            """, out var skipped);
+
+        Assert.Empty(skipped);
+        // Overloads: seam param before the optional / before params.
+        Assert.Contains("A(string user, global::System.DateTime utcNow, string token = null)", rewritten);
+        Assert.Contains("B(global::System.Guid newGuid, params int[] xs)", rewritten);
+        // Wrappers: argument order mirrors the insertion.
+        Assert.Contains("A(user, DateTime.UtcNow, token)", rewritten);
+        Assert.Contains("B(Guid.NewGuid(), xs)", rewritten);
+        AssertCompiles(rewritten);
+    }
+
+    [Fact]
     public void Nameof_is_never_rewritten()
     {
         string src = """

@@ -201,6 +201,15 @@ internal static class SeamRewriter
         SyntaxNode body = (SyntaxNode?)m.Body ?? m.ExpressionBody!;
         var names = ResolveParamNames(m, body, kindsInOrder)!; // eligibility guaranteed non-null
 
+        // The seam parameters are REQUIRED, so they must sit before any optional or `params` parameter
+        // (a required parameter after an optional one is CS1737; anything after `params` is illegal).
+        // Found dogfooding eShopOnWeb: GetUser(string token = null) + appended seam param broke the build.
+        int insertAt = 0;
+        while (insertAt < m.ParameterList.Parameters.Count
+               && m.ParameterList.Parameters[insertAt].Default is null
+               && !m.ParameterList.Parameters[insertAt].Modifiers.Any(SyntaxKind.ParamsKeyword))
+            insertAt++;
+
         // ---- seam overload: the original body with each ambient read replaced by its parameter ----
         var overload = m.ReplaceNodes(readNodes,
             (orig, _) => IdentifierName(names[kindOf[orig]]).WithTriviaFrom(orig));
@@ -208,9 +217,16 @@ internal static class SeamRewriter
         {
             var p = Parameter(Identifier(names[k]))
                 .WithType(ParseTypeName(Specs[k].ParamType).WithTrailingTrivia(Space));
-            // Space after the separating comma — except before the very first parameter of an empty list.
-            return m.ParameterList.Parameters.Count > 0 || i > 0 ? p.WithLeadingTrivia(Space) : p;
-        });
+            // Space after the separating comma — except when this lands at the very front of the list.
+            return insertAt > 0 || i > 0 ? p.WithLeadingTrivia(Space) : p;
+        }).ToList();
+
+        var allParams = m.ParameterList.Parameters.ToList();
+        allParams.InsertRange(insertAt, newParams);
+        // The parameter now following the inserted block sits after a fresh comma — make sure it has a space.
+        int after = insertAt + newParams.Count;
+        if (after < allParams.Count && !allParams[after].GetLeadingTrivia().Any(t => t.IsKind(SyntaxKind.WhitespaceTrivia) || t.IsKind(SyntaxKind.EndOfLineTrivia)))
+            allParams[after] = allParams[after].WithLeadingTrivia(Space);
         var indent = m.GetLeadingTrivia().LastOrDefault(t => t.IsKind(SyntaxKind.WhitespaceTrivia));
         var overloadLead = new List<SyntaxTrivia> { EndOfLine("\n") };
         if (indent.IsKind(SyntaxKind.WhitespaceTrivia)) overloadLead.Add(indent);
@@ -224,7 +240,7 @@ internal static class SeamRewriter
             .WithModifiers(TokenList(overload.Modifiers.Where(t =>
                 !t.IsKind(SyntaxKind.OverrideKeyword) && !t.IsKind(SyntaxKind.VirtualKeyword)
                 && !t.IsKind(SyntaxKind.SealedKeyword) && !t.IsKind(SyntaxKind.NewKeyword))))
-            .AddParameterListParameters(newParams.ToArray())
+            .WithParameterList(m.ParameterList.WithParameters(SeparatedList(allParams)))
             .WithLeadingTrivia(overloadLead)
             .WithTrailingTrivia(m.GetTrailingTrivia());
 
@@ -235,16 +251,19 @@ internal static class SeamRewriter
             if (p.Modifiers.Any(SyntaxKind.RefKeyword)) arg = arg.WithRefKindKeyword(Token(SyntaxKind.RefKeyword));
             if (p.Modifiers.Any(SyntaxKind.OutKeyword)) arg = arg.WithRefKindKeyword(Token(SyntaxKind.OutKeyword));
             return arg;
-        });
+        }).ToList();
         var defaults = kindsInOrder.Select(k =>
         {
             // Pass the very expression the user wrote (first occurrence), so the wrapper reads naturally.
             var firstNode = readNodes.Where(n => kindOf[n] == k).OrderBy(n => n.SpanStart).First();
             return Argument(ParseExpression(firstNode.ToString()));
         });
+        // Argument order mirrors the overload's parameter order (seam values inserted before optionals).
+        var callArgs = forwarded.ToList();
+        callArgs.InsertRange(insertAt, defaults);
         var call = InvocationExpression(
             IdentifierName(m.Identifier.ValueText),
-            ArgumentList(SeparatedList(forwarded.Concat(defaults))));
+            ArgumentList(SeparatedList(callArgs)));
 
         var wrapper = m
             .WithoutAnnotations(MethodAnn)
