@@ -12,12 +12,13 @@
     <PackageId>Pinion</PackageId>
     <Version>0.1.0</Version>
     <Authors>Alexander Gomnes</Authors>
-    <Description>Characterization-test generator for legacy .NET. Change everything, break nothing, prove it. Free `analyze` audit; deterministic `generate`; `prove` (mutation score), `ci`, and an offline HTML dashboard.</Description>
-    <PackageTags>characterization-tests;pinning-tests;legacy;migration;roslyn;mutation-testing;dotnet-tool;golden-master</PackageTags>
-    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <Description>Lock what your legacy .NET code does today into runnable characterization tests, migrate with AI or by hand, then prove nothing changed. Offline by default - the analyze and deterministic generate paths make zero network calls, with no telemetry and no AI unless you opt in. Supports C# and VB.NET.</Description>
+    <PackageTags>characterization-tests;pinning-tests;golden-master;approval-testing;snapshot-testing;legacy;legacy-modernization;migration;roslyn;csharp;vbnet;mutation-testing;dotnet-tool;testing</PackageTags>
+    <PackageReadmeFile>NUGET.md</PackageReadmeFile>
     <RepositoryUrl>https://github.com/AGomnes/Pinion</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
     <PackageProjectUrl>https://github.com/AGomnes/Pinion</PackageProjectUrl>
+    <PackageReleaseNotes>See https://github.com/AGomnes/Pinion/blob/main/CHANGELOG.md</PackageReleaseNotes>
     <!-- Source-available: FSL-1.1-ALv2. Free for ALL use including commercial and internal; only
          Competing Use (reselling/rehosting Pinion itself) is withheld. Converts to Apache-2.0 two
          years after each release. Not an SPDX/OSI expression, so it ships as a file, not a string. -->
@@ -27,7 +28,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <None Include="..\..\README.md" Pack="true" PackagePath="\" />
+    <None Include="..\..\NUGET.md" Pack="true" PackagePath="\" />
     <None Include="..\..\LICENSE.md" Pack="true" PackagePath="\" />
   </ItemGroup>
 
