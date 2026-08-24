@@ -7,7 +7,7 @@ All notable changes to Pinion are documented here. The format follows
 The **generated test/snapshot format** is versioned separately and stamped into every generated test
 (`// pinion-format: N`); a bump there is called out under the release that changes it.
 
-## [Unreleased]
+## [1.1.0] - 2026-08-24
 
 ### Added
 - **OpenAI-compatible AI provider**, opt-in like every other outbound path: `--provider openai` and
