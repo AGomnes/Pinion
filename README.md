@@ -1,22 +1,61 @@
 # Pinion
 
-> Lock the current behavior of a legacy .NET codebase so you can migrate or refactor
-> **without breaking the base — and prove it.**
+> **Migrate with AI. Prove it didn't break anything.**
+>
+> Pinion locks what your legacy .NET code *does today* into runnable tests — then tells you
+> exactly what a migration changed. Runs entirely on your machine.
 
-Pinion is a .NET CLI tool that productizes Michael Feathers' **characterization testing**
-(a.k.a. *pinning tests*): it measures where a codebase is exposed, and — later — freezes
-what the code *currently does* as a golden-master safety net. Change everything, break
-nothing, prove it.
+AI migration tools will happily rewrite your .NET Framework app. They validate the result by
+checking that **your build and tests pass** — which proves almost nothing on the codebases that
+most need migrating, because those are the ones without tests. That gap is where silent behavior
+changes live, and it is why teams report spending
+[hundreds of hours fixing failed partial upgrades](https://www.techzine.eu/news/devops/136571/copilot-replaces-net-upgrade-tool-developers-complain/).
 
-> 🔎 **See it on real code → [PROOF.md](PROOF.md)** — a full `analyze → generate → verify`
-> run on [nopCommerce](https://github.com/nopSolutions/nopCommerce) (4,072 methods): finds 2,189
-> high-risk untested methods, locks 17 real service methods offline for $0, and verifies behavior
-> is unchanged. Now also audits **VB.NET** alongside C#.
+With .NET 8 and .NET 9 both reaching
+[end of support on 10 November 2026](https://devblogs.microsoft.com/dotnet/dotnet-8-9-end-of-support/),
+a great many of these migrations are happening right now, under deadline.
 
-> **The name.** The working title in the spec was *BehaviorLock*, but that name is already
-> taken by a near-identical open-source project in the same space. **Pinion** is free on
-> NuGet and on-theme: Feathers calls characterization tests "pinning tests," and a pinion
-> is the small gear that meshes with a larger one to drive it safely.
+Pinion closes the gap in three commands:
+
+```pwsh
+pinion analyze  ./MyApp                  # where am I exposed? (free, offline, no AI)
+pinion generate ./MyApp -p ./MyApp.Tests # lock what the code does TODAY as golden masters
+#          … now migrate: Copilot, a contractor, or by hand …
+pinion verify   ./MyApp                  # identical — or exactly what changed, and where
+```
+
+The key property: Pinion **never decides what your code *should* do.** It records what it
+*actually does*, bugs included, and freezes that. It's a measurement, not an opinion — which is
+what makes it safe to point at code nobody on the team understands any more.
+
+That idea is Michael Feathers' **characterization testing** (*pinning tests*, from *Working
+Effectively with Legacy Code*). Pinion is that practice, automated for .NET — C# **and VB.NET**.
+
+> 🔎 **See it on real code → [PROOF.md](PROOF.md)** — a full `analyze → generate → verify` run on
+> [nopCommerce](https://github.com/nopSolutions/nopCommerce) (4,072 methods): finds 2,189 high-risk
+> untested methods, locks 17 real service methods offline for $0, and proves behavior is unchanged.
+
+### Why "on your machine" is the whole point
+
+Microsoft has deprecated the free, local .NET Upgrade Assistant in favour of the GitHub Copilot
+upgrade agent. It's a capable tool — but by design it
+[cannot run offline](https://learn.microsoft.com/en-us/dotnet/core/porting/github-copilot-upgrade/faq):
+it requires Copilot cloud infrastructure, and your source is the context it sends. On Copilot
+Free/Pro/Pro+, interaction data including code snippets is
+[used for model training by default](https://about.gitlab.com/blog/github-copilots-new-policy-for-ai-training-is-a-governance-wake-up-call/)
+unless you opt out; Business and Enterprise are contractually exempt.
+
+For regulated finance, defence, healthcare, and anything air-gapped, that isn't a preference —
+it's a blocker. And those are precisely the shops still running the oldest .NET.
+
+Pinion's default path makes **zero network calls**. Not "we promise not to look": there is no HTTP
+client on the deterministic path at all, the source is public so you can check, and
+[TRUST.md](TRUST.md) documents egress command by command. AI is strictly opt-in
+(`--provider anthropic`), off by default, and never required.
+
+> **The name.** The spec's working title was *BehaviorLock*, but that name was taken. A **pinion**
+> is the small gear that meshes with a larger one to drive it safely — and Feathers calls these
+> "pinning tests."
 
 ---
 
