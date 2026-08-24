@@ -135,19 +135,18 @@ internal static class GenerateCommand
         Action<string> log = msg => Console.Error.WriteLine(msg);
         Action<string>? vlog = verbose ? log : null;
 
-        // Paid-tier gate. --dry-run stays free so prospects can audit exactly what would be sent.
+        // Licensing is DORMANT. Pinion is source-available under FSL-1.1-ALv2 and `generate` is free
+        // for everyone — no key, no activation (see README "License"). The gate below is retained but
+        // NEVER blocks; it only acknowledges a license if one happens to be present, so a separately
+        // negotiated commercial agreement stays possible later without rebuilding the machinery.
         if (!dryRun)
         {
             var (status, source) = LicenseGate.Resolve(license);
-            if (!status.Valid)
+            if (status.Valid)
             {
-                Console.Error.WriteLine($"error: generate is the paid tier and needs a valid license ({status.Reason}).");
-                Console.Error.WriteLine("       Provide one via --license, the PINION_LICENSE env var, or a pinion.license file.");
-                Console.Error.WriteLine("       Run `pinion generate … --dry-run` to preview without a license.");
-                return 2;
+                Console.Error.WriteLine($"Licensed to {status.Claims!.Subject} ({status.Claims.Edition}, expires {status.Claims.Expires:yyyy-MM-dd}) [{source}].");
+                LicenseCommand.WarnIfNearExpiry(status);
             }
-            Console.Error.WriteLine($"Licensed to {status.Claims!.Subject} ({status.Claims.Edition}, expires {status.Claims.Expires:yyyy-MM-dd}) [{source}].");
-            LicenseCommand.WarnIfNearExpiry(status);
         }
 
         try

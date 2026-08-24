@@ -71,8 +71,8 @@ never sees the key. The key itself is read only from the environment, travels on
 header, and is never written to disk, logged, or placed in a request body or `--dry-run` output.
 
 ### Audit exactly what would be sent — `--dry-run`
-`generate … --dry-run` prints the *exact bytes* that would be POSTed and makes **no** network call (no
-license required). This is the literal payload — run it and read it.
+`generate … --dry-run` prints the *exact bytes* that would be POSTed and makes **no** network call.
+This is the literal payload — run it and read it.
 
 ```pwsh
 pinion generate <path> --target <method> --provider anthropic --dry-run

@@ -35,12 +35,10 @@ internal static class ProveCommand
 
         cmd.SetAction(async (parse, ct) =>
         {
-            var (status, source) = LicenseGate.Resolve(parse.GetValue(licenseOption));
-            if (!status.Valid)
-            {
-                Console.Error.WriteLine($"error: prove is part of the paid tier and needs a valid license ({status.Reason}).");
-                return 2;
-            }
+            // Dormant gate — see GenerateCommand. `prove` is free under FSL-1.1-ALv2; a license is
+            // acknowledged if present but never required.
+            var (status, _) = LicenseGate.Resolve(parse.GetValue(licenseOption));
+            if (status.Valid) LicenseCommand.WarnIfNearExpiry(status);
 
             var testProject = parse.GetValue(testProjectOption)!;
             bool verbose = parse.GetValue(verboseOption);

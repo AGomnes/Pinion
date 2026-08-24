@@ -97,7 +97,7 @@ public static class LicenseGate
     }
 
     /// <summary>Subscription licenses are short-lived; warn this many days before expiry so the user can
-    /// refresh/renew before the paid tier locks.</summary>
+    /// refresh/renew before expiry. (Dormant — nothing is gated today.)</summary>
     public const int RenewalWarningDays = 7;
 
     /// <summary>The user-level license location (<c>~/.pinion/license</c>) — applies to every project.</summary>

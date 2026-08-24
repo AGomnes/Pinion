@@ -12,7 +12,7 @@
 
 Build a **.NET 8 CLI global tool** that:
 1. **`analyze`** — uses Roslyn to scan a legacy C# codebase, find risky *unprotected* (untested) code, and emit a ranked **Migration Readiness Report**. (Free tier. No AI needed.)
-2. **`generate`** — for chosen targets, uses an LLM to write **characterization tests**, runs them against the *current* code, and records actual output as a **golden master** (approval testing). (Paid tier.)
+2. **`generate`** — for chosen targets, uses an LLM to write **characterization tests**, runs them against the *current* code, and records actual output as a **golden master** (approval testing). (Originally specced as a paid tier; Pinion is now source-available — see LICENSE.md.)
 
 The core principle: the tool **never decides what code *should* do**. It measures where the team
 is exposed (analyze) and **freezes what the code *currently* does** (generate). That is what makes
@@ -243,7 +243,7 @@ TOP RISK HOTSPOTS
 ─────────────────────────────────────────────
 Estimated behavior-lock effort: 61 methods → ~2 days
 ```
-Each row must expose its score breakdown (auditable). JSON output drives the paid `generate` step and
+Each row must expose its score breakdown (auditable). JSON output drives the `generate` step and
 any future web UI.
 
 ### 8.2 `generate` → committed artifacts

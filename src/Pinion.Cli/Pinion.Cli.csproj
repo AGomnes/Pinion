@@ -11,31 +11,32 @@
     <ToolCommandName>pinion</ToolCommandName>
     <PackageId>Pinion</PackageId>
     <Version>0.1.0</Version>
-    <Authors>Pinion</Authors>
+    <Authors>Alexander Gomnes</Authors>
     <Description>Characterization-test generator for legacy .NET. Change everything, break nothing, prove it. Free `analyze` audit; deterministic `generate`; `prove` (mutation score), `ci`, and an offline HTML dashboard.</Description>
     <PackageTags>characterization-tests;pinning-tests;legacy;migration;roslyn;mutation-testing;dotnet-tool;golden-master</PackageTags>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <RepositoryUrl>https://github.com/AGomnes/Pinion</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
     <PackageProjectUrl>https://github.com/AGomnes/Pinion</PackageProjectUrl>
-    <!-- Commercial license (proprietary EULA, NOT an OSS expression). Review EULA.md with a lawyer and
-         fill in the placeholders before publishing. -->
-    <PackageLicenseFile>EULA.md</PackageLicenseFile>
-    <PackageRequireLicenseAcceptance>true</PackageRequireLicenseAcceptance>
+    <!-- Source-available: FSL-1.1-ALv2. Free for ALL use including commercial and internal; only
+         Competing Use (reselling/rehosting Pinion itself) is withheld. Converts to Apache-2.0 two
+         years after each release. Not an SPDX/OSI expression, so it ships as a file, not a string. -->
+    <PackageLicenseFile>LICENSE.md</PackageLicenseFile>
+    <PackageRequireLicenseAcceptance>false</PackageRequireLicenseAcceptance>
     <SuppressDependenciesWhenPacking>false</SuppressDependenciesWhenPacking>
   </PropertyGroup>
 
   <ItemGroup>
     <None Include="..\..\README.md" Pack="true" PackagePath="\" />
-    <None Include="..\..\EULA.md" Pack="true" PackagePath="\" />
+    <None Include="..\..\LICENSE.md" Pack="true" PackagePath="\" />
   </ItemGroup>
 
   <ItemGroup>
-    <!-- Free tier -->
+    <!-- Analyze layer -->
     <ProjectReference Include="..\Pinion.Engine\Pinion.Engine.csproj" />
     <ProjectReference Include="..\Pinion.Adapters.CSharp\Pinion.Adapters.CSharp.csproj" />
     <ProjectReference Include="..\Pinion.Adapters.VisualBasic\Pinion.Adapters.VisualBasic.csproj" />
-    <!-- Paid tier (the CLI is the composition root that bundles both) -->
+    <!-- Generate layer (the CLI is the composition root that bundles both) -->
     <ProjectReference Include="..\Pinion.Generate\Pinion.Generate.csproj" />
     <ProjectReference Include="..\Pinion.Adapters.CSharp.Generate\Pinion.Adapters.CSharp.Generate.csproj" />
   </ItemGroup>

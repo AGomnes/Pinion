@@ -9,7 +9,7 @@ namespace Pinion.Cli;
 /// signature becomes a thin delegating wrapper (existing callers unchanged), and the real body moves to an
 /// overload whose ambient values are parameters — deterministic, so `generate` can lock it.
 /// Preview-by-default: it prints diffs and writes nothing until --apply; applied edits are compile-gated
-/// and reverted if the build breaks. Free tier — it feeds the paid `generate`.
+/// and reverted if the build breaks. Analyze layer — it feeds `generate`.
 /// </summary>
 internal static class SeamCommand
 {

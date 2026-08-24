@@ -8,7 +8,7 @@ namespace Pinion.Engine.Abstractions;
 /// the IR it returns — never to Roslyn / ts-morph / ast types directly.
 /// </summary>
 /// <remarks>
-/// This is the FREE surface. The paid `generate` surface is a separate interface
+/// This is the ANALYZE surface. The `generate` surface is a separate interface
 /// (<c>Pinion.Generate.IGenerationAdapter</c>) in the paid assembly, so the free engine
 /// has no compile-time dependency on the paid code.
 /// </remarks>

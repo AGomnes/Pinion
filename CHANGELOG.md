@@ -34,13 +34,21 @@ First release candidate — the full local-first workflow, pending public publis
   branch constants out of VB syntax (`Select Case`, `Case Is`/ranges, comparisons) to emit a **C#**
   characterization test against the VB assembly — one golden-master pipeline for both .NET languages.
   `init-tests` accepts a `.vbproj`; the AI providers stay C#-only.
-- Licensing: offline signed (ECDSA P-256) license gate; `license activate` / `verify` / `machine-id`;
-  near-expiry renewal nudge; multiple trusted keys for painless key rotation.
+- **License: source-available under the Functional Source License 1.1 (`FSL-1.1-ALv2`).** Free for all
+  use — commercial, internal, on proprietary code, and on client engagements. The only right withheld
+  is Competing Use (reselling, rehosting, or repackaging Pinion itself). Each released version
+  automatically converts to Apache-2.0 two years after release.
+- The offline signed (ECDSA P-256) license gate remains in the tree but is **dormant — it enforces
+  nothing**; `generate` and `prove` run for everyone without a key. Retained only to keep a
+  separately-negotiated commercial agreement possible later. The prior commercial EULA draft is
+  archived, superseded, at `docs/EULA-draft-superseded.md`.
 - Packaging: ships as a .NET tool (`dotnet tool install -g Pinion`); tag-driven NuGet release workflow.
 - Generated tests pin invariant culture and carry a format stamp (format **v1**) for cross-machine
   reproducibility and forward-compatible verification.
 
 ### Notes
 - Trust: `analyze`, deterministic `generate`, `verify`, and `prove` run with no network access.
-- Before the first publish: fill the EULA placeholders, generate the production signing key, and set the
-  NuGet API key.
+- Pinion is *source-available*, not OSI-approved open source: the Competing Use carve-out restricts a
+  field of endeavor, which the Open Source Definition forbids. The docs use the accurate term.
+- Before the first publish: have `LICENSE.md` reviewed by a lawyer, set the copyright holder to a legal
+  entity if one is formed, and set the NuGet API key.

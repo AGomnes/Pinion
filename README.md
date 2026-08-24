@@ -29,7 +29,7 @@ nothing, prove it.
 | **3 — `generate` (AI)** | context extraction, thin Anthropic client, secret scrubber + `--dry-run`, compile→run→repair, golden masters | ✅ done |
 | 4 — hardening / premium | mutation testing (`prove`) ✓, property-based (CsCheck) ✓, CI templates (`ci`) ✓, HTML dashboard ✓; prompt caching + Batch API deferred (AI) | non-AI items done |
 
-The free, AI-free **`analyze`** command is complete. The paid **`generate`** command (Milestone 3)
+The AI-free **`analyze`** command is complete. The **`generate`** command (Milestone 3)
 writes characterization tests that lock current behavior, with a compile→run→repair loop.
 
 Since then the **deterministic** generator (the default — AI is opt-in, last-resort) has been deepened
@@ -73,13 +73,13 @@ Building the package from source: `dotnet pack src/Pinion.Cli -c Release -o ./ar
 The product is split so other languages can be added later as thin adapters:
 
 ```
-FREE tier (open-source engine — analyze):
+ANALYZE tier (the auditable core — zero network, no AI):
   Pinion.Engine          language-agnostic core — IR, risk scoring, domain tagging,
                          report building/rendering. Speaks ONLY the IR; NO Roslyn.
   Pinion.Adapters.CSharp the only place Roslyn lives for analyze. Produces the IR;
                          never leaks compiler types past the ILanguageAdapter boundary.
 
-PAID tier (generate — AI):
+GENERATE tier (test synthesis):
   Pinion.Generate              LLM client, secret scrubber, prompts, orchestrator,
                                IGenerationAdapter. References the free engine.
   Pinion.Adapters.CSharp.Generate  C# context extraction + emit + compile/run/snapshot.
@@ -87,12 +87,13 @@ PAID tier (generate — AI):
   Pinion.Cli                   composition root — bundles both tiers behind one CLI.
 ```
 
-**The free/paid boundary is enforced by the project graph — the dependency only ever flows
-paid → free, never the reverse.** The free `Pinion.Engine` / `Pinion.Adapters.CSharp` have no
-compile-time path to any paid code (the free `ILanguageAdapter` covers analyze only; the paid
-`IGenerationAdapter` lives in `Pinion.Generate`). So the free engine can be open-sourced and
-shipped standalone, and the free tier literally cannot reach the paid generate code. (A
-runtime license/entitlement gate on `generate` is a separate, deferred business decision.)
+**The layer boundary is enforced by the project graph — the dependency only ever flows
+generate → analyze, never the reverse.** `Pinion.Engine` / `Pinion.Adapters.CSharp` have no
+compile-time path to any generation code (`ILanguageAdapter` covers analyze only; `IGenerationAdapter`
+lives in `Pinion.Generate`). This began as a free/paid split; with Pinion now source-available it
+serves a better purpose: **the analyze core can be vendored, audited, or run standalone** without
+pulling in the LLM client at all. If your security review only clears the offline half, that half is a
+genuinely separate artifact — not a runtime flag you have to trust.
 
 The boundary is [`ILanguageAdapter`](src/Pinion.Engine/Abstractions/ILanguageAdapter.cs);
 the shared vocabulary is the IR [`CodeUnit`](src/Pinion.Engine/Model/CodeUnit.cs). Get a new
@@ -209,7 +210,7 @@ obstacles (`File`, `HttpClient`, `SqlConnection`, …) need a *designed* abstrac
 deliberately left flagged as manual rather than guessed at. Editing your source is the highest-trust
 action in the product — hence preview-by-default and the build-gated, self-reverting apply.
 
-## `generate` (paid AI tier)
+## `generate`
 
 Writes xUnit + [Verify](https://github.com/VerifyTests/Verify) characterization tests for chosen
 targets, then **compiles, runs, and captures the actual output as a golden master**. The key
@@ -413,12 +414,12 @@ A behavior net only catches a regression if it runs on every change. `pinion ci`
 workflow whose core is the **behavior gate**: the committed characterization tests run as `dotnet test`
 and **fail the PR when a migration (framework upgrade, refactor, dependency bump) alters observable
 behavior**. It also wires in the free `analyze` risk report (commented, opt-in) and, with `--with-prove`,
-the paid mutation-score step.
+the mutation-score step.
 
 ```pwsh
 pinion ci -p tests/MyApp.Tests.csproj                 # → .github/workflows/pinion.yml
 pinion ci --provider azure -p tests/MyApp.Tests.csproj # → azure-pipelines-pinion.yml
-pinion ci -p tests/MyApp.Tests.csproj --with-prove     # also post the mutation score (needs a license)
+pinion ci -p tests/MyApp.Tests.csproj --with-prove     # also post the mutation score
 pinion ci --stdout                                     # preview without writing
 ```
 
@@ -451,40 +452,52 @@ the one file**, which therefore **makes zero network requests**: it opens offlin
 forever, and never leaks the analyzed code's shape to a CDN. No build step, no npm, nothing to audit —
 the same discipline as the rest of Pinion. Dark/light follows your OS.
 
-### Licensing (offline, no phone-home)
+### License — free to use, including at work
 
-`generate` is gated by a **signed license verified entirely offline** (ECDSA P-256, BCL only) —
-no activation server, because an online check would contradict the "code stays local" promise.
-The product embeds the issuer **public** key and can ONLY verify; the **private** key and all
-minting code live in a separate vendor-only tool that never ships.
+Pinion is **source-available** under the [Functional Source License 1.1 with an Apache-2.0 future
+grant](LICENSE.md) (`FSL-1.1-ALv2`). In plain English:
 
-```pwsh
-# Customer side (shipped product — verify only, fully offline):
-pinion license activate <key>         # install a key (~/.pinion/license; --local for this project only)
-pinion license verify                 # check the current license (warns when it's within 7 days of expiry)
-pinion license machine-id             # this machine's fingerprint — send it to the vendor
-pinion generate … --dry-run           # preview is free, no license required
+**You may** use Pinion for *any* purpose — including commercially, inside a business, on proprietary
+code, and on client engagements as a consultant. You may read, modify, fork, and redistribute it. No
+key, no account, no activation, no seat count, no phone-home.
 
-# Vendor side (separate tools/Pinion.LicenseAdmin — needs the secret signing key):
-dotnet run --project tools/Pinion.LicenseAdmin -- keygen        # one-time: make a keypair
-$env:PINION_SIGNING_KEY = "<private>"
-dotnet run --project tools/Pinion.LicenseAdmin -- issue --subject "Acme Corp" --days 365 --machine <id>
-```
+**You may not** sell Pinion, host it as a paid service, or ship it inside a product that substitutes
+for it. That single carve-out — "Competing Use" — is the only right withheld.
 
-A license is supplied via `--license`, `PINION_LICENSE`, or a `pinion.license` file. Verification
-works air-gapped. Rejected: tampered, forged (wrong key), expired, **or bound to another machine**.
+**Two years after each release, that version automatically becomes Apache-2.0.** Irrevocably. So this
+isn't source-available-forever; every version you receive is on a clock to full open source.
 
-**Hardening vs. honest limits.** Two measures raise the bar against the realistic bypasses:
-- **Node-locking** — a license can be bound to a machine fingerprint (`--machine <id>`), so a
-  customer can't share their token; it only verifies on that machine.
-- **No minting in the product** — issuance code (`keygen`/`issue`) is a separate vendor tool, so
-  customer binaries contain nothing that can mint a license.
+> **On the words "open source".** Pinion is *source-available*, not OSI-approved open source — the Open
+> Source Definition forbids restricting fields of endeavor, and the Competing Use clause does exactly
+> that. Calling it "open source" would be inaccurate, so this project doesn't. All of the source is
+> public and auditable, which is the property that actually matters for the trust story below.
 
-What it can't stop (true of *any* offline-licensed local software): someone who controls the
-binary can edit the source and recompile, decompile/patch the DLL, or swap the embedded public
-key. Hard enforcement would require running generation server-side — which would break the
-local-first promise. The gate stops casual bypass, forgery, file-editing, and token-sharing; the
-real moat is the hosted service, updates, and support.
+**Why not simply MIT?** Because the restriction costs legitimate users nothing. Every real Pinion user —
+the enterprise locking its own legacy behavior, the consultancy migrating a client, the developer
+reading the code to verify it doesn't phone home — is fully permitted. The only excluded party is
+someone repackaging Pinion and selling it back.
+
+**Why not a "non-commercial" licence?** Because the codebases that need characterization tests most are
+commercial ones. A non-commercial clause would exclude essentially every intended user, and "commercial
+use" is vague enough that enterprise legal teams default to *no*. Internal business use is explicitly
+granted here for exactly that reason.
+
+<details>
+<summary>Dormant: the offline license gate</summary>
+
+The repo still contains an offline, signed license gate (`LicenseGate`, ECDSA P-256, `pinion license
+activate|verify|machine-id`, and a vendor-only `tools/Pinion.LicenseAdmin` issuer). **It gates nothing
+today** and no subscription is sold. It is retained, unenforced, only so a separately-negotiated
+commercial agreement remains possible later without rebuilding it.
+
+Note that it was designed to verify entirely offline — no activation server — because an online check
+would contradict the local-first promise. The product embeds only the issuer **public** key and can
+solely verify; the private key and all minting code live in a tool that never ships. The archived
+commercial EULA draft is at [docs/EULA-draft-superseded.md](docs/EULA-draft-superseded.md) and governs
+nothing.
+
+</details>
+
 
 **Security (the sales pitch):** code stays local; the only thing that ever leaves is per-method
 context, through a **single, auditable** HTTP call to one endpoint. A pre-send scrubber strips
@@ -539,7 +552,7 @@ In CI, store it as a **secret** (never in the YAML) and expose it as an env var 
 ```
 
 The customer brings their own key; the vendor issues only the offline **license** (separate — see
-[Licensing](#licensing-offline-no-phone-home)). The **local-model** path (`--base-url
+[License](#license--free-to-use-including-at-work)). The **local-model** path (`--base-url
 http://localhost:<port>`) reads the *same* variable — most local Anthropic-compatible servers accept
 any non-empty value (or a token you configure), so set `ANTHROPIC_API_KEY` to that and nothing leaves
 the machine.
@@ -598,12 +611,12 @@ references won't restore on a modern box.
 ## Repo layout
 
 ```
-src/Pinion.Engine                  FREE: IR, risk scoring, domain tagging, report renderers
-src/Pinion.Adapters.CSharp         FREE: Roslyn analyze — call graph, landmines, seams, coverage
-src/Pinion.Adapters.VisualBasic    FREE: VB.NET analyze adapter (same IR, MSBuild + source-scan)
-src/Pinion.Generate                PAID: LLM client, scrubber, prompts, orchestrator, licensing
-src/Pinion.Adapters.CSharp.Generate PAID: C# + VB extract + emit + compile/run/snapshot (tests are always C#)
-src/Pinion.Cli                     `pinion` global tool (bundles both tiers)
+src/Pinion.Engine                  ANALYZE: IR, risk scoring, domain tagging, report renderers
+src/Pinion.Adapters.CSharp         ANALYZE: Roslyn analyze — call graph, landmines, seams, coverage
+src/Pinion.Adapters.VisualBasic    ANALYZE: VB.NET analyze adapter + solution loading (MSBuild + source-scan)
+src/Pinion.Generate                GENERATE: LLM client, scrubber, prompts, orchestrator, licensing
+src/Pinion.Adapters.CSharp.Generate GENERATE: C# + VB extract + emit + compile/run/snapshot (tests are always C#)
+src/Pinion.Cli                     `pinion` global tool (composition root over both layers)
 tests/Pinion.Tests                 engine, analyze, landmine, generation, seam, and licensing tests (230+)
 samples/LegacyShop           a deliberately under-tested sample (risk + blast radius + coverage)
 samples/LegacyVb             the VB.NET analog (analyze + generate: mined Select Case constants)

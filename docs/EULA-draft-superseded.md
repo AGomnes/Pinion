@@ -1,3 +1,13 @@
+> ## ⚠️ SUPERSEDED — NOT THE GOVERNING LICENSE
+>
+> Pinion is licensed under the **[Functional Source License 1.1 (Apache-2.0 future)](../LICENSE.md)**.
+> That file, and only that file, governs your use of Pinion.
+>
+> This document is an **archived draft** of a commercial EULA written before the project moved to a
+> source-available licence. It describes a paid subscription tier that is **not offered**. It is kept
+> only as a starting point should a separately-negotiated commercial agreement ever be needed. Nothing
+> in it grants or restricts any right today.
+
 # Pinion End-User License Agreement (EULA)
 
 > **TEMPLATE — NOT LEGAL ADVICE.** This is a starting template. Have it reviewed by a qualified lawyer in

@@ -1,6 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <!-- PAID tier (C# generate adapter). Depends on the free adapter + paid engine. -->
+  <!-- GENERATE layer (C# generate adapter). Depends on the analyze adapter + generate engine. -->
   <PropertyGroup>
     <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
   </PropertyGroup>
