@@ -73,7 +73,7 @@ Processor receives and stores none.
 
 ## 13. Audits
 The Processor makes available information necessary to demonstrate compliance and allows for reasonable
-audits. The open-source engine and `--dry-run` payload preview support independent verification.
+audits. The published source and the `--dry-run` payload preview support independent verification.
 
 ---
 

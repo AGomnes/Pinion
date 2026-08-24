@@ -1,8 +1,8 @@
 # Trust & Data Handling
 
-Pinion asks to read your source code. Trust is the whole point of the tool, so this document states —
-precisely and verifiably — what does and does not leave your machine. Every claim here is checkable
-against the open-source code; where to look is noted inline.
+Pinion asks to read your source code, so this document states exactly what does and does not leave
+your machine. Every claim here is checkable against the published source; where to look is noted
+inline.
 
 **One line:** Pinion runs entirely on your machine. The *only* thing that can ever leave is individual
 method snippets, and only when you explicitly opt into the AI tier (`generate --provider anthropic`).
@@ -114,10 +114,11 @@ receive and store none of your tests, snapshots, or reports.
 
 ---
 
-## Open source — verify it yourself
+## Verify it yourself
 
-The engine and adapters are open source. You don't have to trust this document — read the code, run
-`--dry-run`, and grep for the single outbound call. Quick audit:
+All of Pinion's source is public, under [FSL-1.1-ALv2](LICENSE.md). It is source-available rather than
+OSI-approved open source, but every line is readable, so you do not have to trust this document: read
+the code, run `--dry-run`, and grep for the single outbound call. Quick audit:
 
 ```sh
 grep -rn "HttpClient\|SendAsync"            src/   # the one outbound client

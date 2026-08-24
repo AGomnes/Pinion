@@ -208,7 +208,7 @@ The product asks enterprises to let a tool read their source. Trust is the whole
   (don't paraphrase the guarantee).
 - **Local-model mode** — let the tool target a local LLM endpoint for air-gapped/regulated clients
   (finance/gov/health). Same price; everything stays in-house.
-- **Open-source the engine** — anyone can verify it phones home nowhere except the one declared call.
+- **Publish the source** — anyone can verify it phones home nowhere except the one declared call.
 - **Auditable network behavior** — single outbound endpoint, `--dry-run` showing exactly what bytes
   would be sent, verbose logging of every external call, **no telemetry by default** (opt-in only).
 - **Local-only artifacts** — generated tests + snapshots written to their repo; we never receive/store them.
@@ -217,7 +217,7 @@ The product asks enterprises to let a tool read their source. Trust is the whole
 
 One-line client pitch: *"Runs entirely on your machine, reads your code locally. The only thing that
 ever leaves is individual method snippets sent to the AI under zero-retention terms — and if that's too
-much, run it fully offline against a local model. The engine is open-source; verify every word."*
+much, run it fully offline against a local model. The source is public; verify every word."*
 
 ---
 
@@ -260,7 +260,7 @@ a migration changes behavior. We store/receive nothing.
 - Compute cyclomatic complexity.
 - Detect `HasTests` (test-project references to symbols).
 - Console + Markdown + JSON report.
-- ✅ This alone is the **free open-source Readiness Audit** and the lead magnet.
+- ✅ This alone is the **free Readiness Audit** and the lead magnet.
 
 **Milestone 2 — enrich `analyze`:**
 - Call-graph → caller/callee counts (blast radius).

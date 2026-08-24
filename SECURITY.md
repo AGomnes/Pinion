@@ -31,7 +31,7 @@ The short version: **by default, nothing.**
 | `prove` | none by Pinion; Stryker.NET may restore NuGet packages |
 | `generate --provider anthropic` (opt-in, never the default) | per-method context to the Anthropic API only |
 
-There is no telemetry, no analytics, no licence activation call, and no update check. The
+There is no telemetry, no analytics, no license activation call, and no update check. The
 deterministic path has no HTTP client in it at all. [TRUST.md](TRUST.md) documents this per command
 against the actual code, and the source is public so you can verify rather than trust.
 

@@ -2,18 +2,17 @@
 
 > **Migrate with AI. Prove it didn't break anything.**
 >
-> Pinion locks what your legacy .NET code *does today* into runnable tests — then tells you
+> Pinion locks what your legacy .NET code *does today* into runnable tests, then tells you
 > exactly what a migration changed. Runs entirely on your machine.
 
 AI migration tools will happily rewrite your .NET Framework app. They validate the result by
-checking that **your build and tests pass** — which proves almost nothing on the codebases that
-most need migrating, because those are the ones without tests. That gap is where silent behavior
-changes live, and it is why teams report spending
+checking that **your build and tests pass**, which proves almost nothing on the codebases that
+most need migrating, because those are the ones without tests. That is why teams report spending
 [hundreds of hours fixing failed partial upgrades](https://www.techzine.eu/news/devops/136571/copilot-replaces-net-upgrade-tool-developers-complain/).
 
-With .NET 8 and .NET 9 both reaching
+.NET 8 and .NET 9 both reach
 [end of support on 10 November 2026](https://devblogs.microsoft.com/dotnet/dotnet-8-9-end-of-support/),
-a great many of these migrations are happening right now, under deadline.
+so most of those migrations are happening now.
 
 Pinion closes the gap in three commands:
 
@@ -21,40 +20,39 @@ Pinion closes the gap in three commands:
 pinion analyze  ./MyApp                  # where am I exposed? (free, offline, no AI)
 pinion generate ./MyApp -p ./MyApp.Tests # lock what the code does TODAY as golden masters
 #          … now migrate: Copilot, a contractor, or by hand …
-pinion verify   ./MyApp                  # identical — or exactly what changed, and where
+pinion verify   ./MyApp                  # identical, or exactly what changed and where
 ```
 
-The key property: Pinion **never decides what your code *should* do.** It records what it
-*actually does*, bugs included, and freezes that. It's a measurement, not an opinion — which is
-what makes it safe to point at code nobody on the team understands any more.
+Pinion **never decides what your code *should* do.** It records what it *actually does*, bugs
+included, and freezes that. Because it measures rather than judges, it is safe to point at code
+nobody on the team understands any more.
 
-That idea is Michael Feathers' **characterization testing** (*pinning tests*, from *Working
-Effectively with Legacy Code*). Pinion is that practice, automated for .NET — C# **and VB.NET**.
+That practice is Michael Feathers' **characterization testing** (*pinning tests*, from *Working
+Effectively with Legacy Code*), automated for .NET, in C# **and VB.NET**.
 
-> 🔎 **See it on real code → [PROOF.md](PROOF.md)** — a full `analyze → generate → verify` run on
-> [nopCommerce](https://github.com/nopSolutions/nopCommerce) (4,072 methods): finds 2,189 high-risk
+> **See it on real code → [PROOF.md](PROOF.md)**: a full `analyze → generate → verify` run on
+> [nopCommerce](https://github.com/nopSolutions/nopCommerce) (4,072 methods). Finds 2,189 high-risk
 > untested methods, locks 17 real service methods offline for $0, and proves behavior is unchanged.
 
-### Why "on your machine" is the whole point
+### Why it runs on your machine
 
-Microsoft has deprecated the free, local .NET Upgrade Assistant in favour of the GitHub Copilot
-upgrade agent. It's a capable tool — but by design it
+Microsoft has deprecated the free, local .NET Upgrade Assistant in favor of the GitHub Copilot
+upgrade agent. It is a capable tool, but by design it
 [cannot run offline](https://learn.microsoft.com/en-us/dotnet/core/porting/github-copilot-upgrade/faq):
 it requires Copilot cloud infrastructure, and your source is the context it sends. On Copilot
 Free/Pro/Pro+, interaction data including code snippets is
 [used for model training by default](https://about.gitlab.com/blog/github-copilots-new-policy-for-ai-training-is-a-governance-wake-up-call/)
-unless you opt out; Business and Enterprise are contractually exempt.
+unless you opt out. Business and Enterprise are contractually exempt.
 
-For regulated finance, defence, healthcare, and anything air-gapped, that isn't a preference —
-it's a blocker. And those are precisely the shops still running the oldest .NET.
+For regulated finance, defense, healthcare, and anything air-gapped, that is a blocker rather than
+a preference. Those are also the shops still running the oldest .NET.
 
-Pinion's default path makes **zero network calls**. Not "we promise not to look": there is no HTTP
-client on the deterministic path at all, the source is public so you can check, and
-[TRUST.md](TRUST.md) documents egress command by command. AI is strictly opt-in
-(`--provider anthropic`), off by default, and never required.
+Pinion's default path makes **zero network calls**. There is no HTTP client on the deterministic
+path at all, the source is public so you can check, and [TRUST.md](TRUST.md) documents egress
+command by command. AI is opt-in (`--provider anthropic`), off by default, and never required.
 
 > **The name.** The spec's working title was *BehaviorLock*, but that name was taken. A **pinion**
-> is the small gear that meshes with a larger one to drive it safely — and Feathers calls these
+> is the small gear that meshes with a larger one to drive it safely, and Feathers calls these
 > "pinning tests."
 
 ---
@@ -431,12 +429,12 @@ sample's *deterministic* tests, **no AI**):
 <sup>†</sup> Measured method-scoped this pass (AuthHandler 57.69% → 80.77%; SkuValidator 75% → 100% — a small method, so a mechanism proof more than a big-sample showcase). Stryker 4.14, identical config before/after; the whole-sample overall wasn't re-run.
 
 So the generator clears length/letter/digit guards, reaches `int.TryParse` success branches, pins the
-behaviour in `out`/`ref` parameters, **constructs parameter objects whose fields carry the mined branch
+behavior in `out`/`ref` parameters, **constructs parameter objects whose fields carry the mined branch
 constants** (a `CartLine` with `Quantity: 10` and a `"CLEARANCE"` SKU mined from `Sku.StartsWith(...)`),
 and — for numeric methods — adds a **property-based tier** that samples *every parameter at once* over
 ranges derived from the mined constants. That joint sampling escapes the one-hot trap where a fixed base
 value (`isExempt = true`, `daysLate = -1`) silently starves whole code paths, so arithmetic and loop
-behaviour finally get pinned. The samples are seeded from the method id and **baked into the test as
+behavior finally get pinned. The samples are seeded from the method id and **baked into the test as
 literals**, so the golden master stays reproducible and the generated test takes no runtime dependency on
 CsCheck. The **conjunction-of-guards** case (e.g. `AuthHandler`: a token that must be 16+ chars AND have a
 letter AND a digit AND not start with `-`) is now handled by a deterministic **guard solver** that emits a
@@ -491,50 +489,46 @@ the one file**, which therefore **makes zero network requests**: it opens offlin
 forever, and never leaks the analyzed code's shape to a CDN. No build step, no npm, nothing to audit —
 the same discipline as the rest of Pinion. Dark/light follows your OS.
 
-### License — free to use, including at work
+### License
 
 Pinion is **source-available** under the [Functional Source License 1.1 with an Apache-2.0 future
-grant](LICENSE.md) (`FSL-1.1-ALv2`). In plain English:
+grant](LICENSE.md) (`FSL-1.1-ALv2`).
 
-**You may** use Pinion for *any* purpose — including commercially, inside a business, on proprietary
+**You may** use Pinion for *any* purpose, including commercially, inside a business, on proprietary
 code, and on client engagements as a consultant. You may read, modify, fork, and redistribute it. No
 key, no account, no activation, no seat count, no phone-home.
 
 **You may not** sell Pinion, host it as a paid service, or ship it inside a product that substitutes
-for it. That single carve-out — "Competing Use" — is the only right withheld.
+for it. That carve-out, "Competing Use", is the only right withheld.
 
-**Two years after each release, that version automatically becomes Apache-2.0.** Irrevocably. So this
-isn't source-available-forever; every version you receive is on a clock to full open source.
+**Two years after each release, that version becomes Apache-2.0 automatically**, so every version you
+receive is on a fixed path to full open source.
 
-> **On the words "open source".** Pinion is *source-available*, not OSI-approved open source — the Open
+> **On the words "open source".** Pinion is *source-available*, not OSI-approved open source. The Open
 > Source Definition forbids restricting fields of endeavor, and the Competing Use clause does exactly
-> that. Calling it "open source" would be inaccurate, so this project doesn't. All of the source is
-> public and auditable, which is the property that actually matters for the trust story below.
+> that, so calling it "open source" would be inaccurate. All of the source is public and auditable.
 
-**Why not simply MIT?** Because the restriction costs legitimate users nothing. Every real Pinion user —
-the enterprise locking its own legacy behavior, the consultancy migrating a client, the developer
-reading the code to verify it doesn't phone home — is fully permitted. The only excluded party is
-someone repackaging Pinion and selling it back.
+MIT was rejected because the restriction costs legitimate users nothing: the enterprise locking its own
+legacy behavior, the consultancy migrating a client, and the developer reading the code to check it
+doesn't phone home are all fully permitted. Only repackaging Pinion and selling it is excluded.
 
-**Why not a "non-commercial" licence?** Because the codebases that need characterization tests most are
-commercial ones. A non-commercial clause would exclude essentially every intended user, and "commercial
-use" is vague enough that enterprise legal teams default to *no*. Internal business use is explicitly
-granted here for exactly that reason.
+A non-commercial license was rejected because the codebases that need characterization tests are
+commercial ones. Such a clause would exclude essentially every intended user, and "commercial use" is
+vague enough that enterprise legal teams default to *no*. Internal business use is granted explicitly
+for that reason.
 
 <details>
 <summary>Dormant: the offline license gate</summary>
 
 The repo still contains an offline, signed license gate (`LicenseGate`, ECDSA P-256, `pinion license
 activate|verify|machine-id`, and a vendor-only `tools/Pinion.LicenseAdmin` issuer). **It gates nothing
-today** and no subscription is sold. It is retained, unenforced, only so a separately-negotiated
+today** and no subscription is sold. It is retained, unenforced, only so a separately negotiated
 commercial agreement remains possible later without rebuilding it.
 
-Note that it was designed to verify entirely offline — no activation server — because an online check
-would contradict the local-first promise. The product embeds only the issuer **public** key and can
-solely verify; the private key and all minting code live in a tool that never ships. The archived
-commercial EULA draft is at [docs/EULA-draft-superseded.md](docs/EULA-draft-superseded.md) and governs
-nothing.
-
+It verifies entirely offline, with no activation server, because an online check would contradict the
+local-first promise. The product embeds only the issuer **public** key and can solely verify; the
+private key and all minting code live in a tool that never ships. The archived commercial EULA draft is
+at [docs/EULA-draft-superseded.md](docs/EULA-draft-superseded.md) and governs nothing.
 </details>
 
 
@@ -591,7 +585,7 @@ In CI, store it as a **secret** (never in the YAML) and expose it as an env var 
 ```
 
 The customer brings their own key; the vendor issues only the offline **license** (separate — see
-[License](#license--free-to-use-including-at-work)). The **local-model** path (`--base-url
+[License](#license)). The **local-model** path (`--base-url
 http://localhost:<port>`) reads the *same* variable — most local Anthropic-compatible servers accept
 any non-empty value (or a token you configure), so set `ANTHROPIC_API_KEY` to that and nothing leaves
 the machine.

@@ -2,11 +2,11 @@
 
 **Migrate with AI. Prove it didn't break anything.**
 
-Pinion locks what your legacy .NET code *does today* into runnable tests — then tells you exactly
+Pinion locks what your legacy .NET code *does today* into runnable tests, then tells you exactly
 what a migration changed. It runs entirely on your machine.
 
 AI migration tools will happily rewrite your .NET Framework app. They validate the result by
-checking that your build and tests pass — which proves almost nothing on the codebases that most
+checking that your build and tests pass, which proves almost nothing on the codebases that most
 need migrating, because those are the ones without tests.
 
 Pinion closes that gap in three commands:
@@ -17,22 +17,22 @@ dotnet tool install -g Pinion
 pinion analyze  ./MyApp                  # where am I exposed? (free, offline, no AI)
 pinion generate ./MyApp -p ./MyApp.Tests # lock what the code does TODAY as golden masters
 #          … now migrate: Copilot, a contractor, or by hand …
-pinion verify   ./MyApp                  # identical — or exactly what changed, and where
+pinion verify   ./MyApp                  # identical, or exactly what changed and where
 ```
 
 Pinion never decides what your code *should* do. It records what it *actually does*, bugs included,
-and freezes that. It's a measurement, not an opinion — which is what makes it safe to point at code
-nobody on the team understands any more. The idea is Michael Feathers' **characterization testing**
-(*pinning tests*), automated for .NET — **C# and VB.NET**.
+and freezes that. Because it measures rather than judges, it is safe to point at code nobody on the
+team understands any more. The practice is Michael Feathers' **characterization testing**
+(*pinning tests*), automated for .NET, in **C# and VB.NET**.
 
 ## Nothing leaves your machine
 
-The `analyze` path and the default deterministic `generate` path make **zero network calls** — there
-is no HTTP client in them at all. No telemetry, no analytics, no licence activation, no update check.
-AI is strictly opt-in (`--provider anthropic`), off by default, and never required.
+The `analyze` path and the default deterministic `generate` path make **zero network calls**. There
+is no HTTP client in them at all. No telemetry, no analytics, no license activation, no update check.
+AI is opt-in (`--provider anthropic`), off by default, and never required.
 
-That matters if you're in regulated finance, defence, healthcare, or anywhere air-gapped — the
-places still running the oldest .NET, and the ones cloud-only migration tooling can't serve.
+That matters in regulated finance, defense, healthcare, and anywhere air-gapped: the places still
+running the oldest .NET, and the ones cloud-only migration tooling cannot serve.
 
 ## Commands
 
@@ -56,7 +56,7 @@ places still running the oldest .NET, and the ones cloud-only migration tooling 
 - **[SECURITY.md](https://github.com/AGomnes/Pinion/blob/main/SECURITY.md)** — reporting, egress, and the fact that `generate` executes your code
 - **[CHANGELOG.md](https://github.com/AGomnes/Pinion/blob/main/CHANGELOG.md)**
 
-## Licence
+## License
 
 Source-available under the [Functional Source License 1.1, Apache-2.0 future grant](https://github.com/AGomnes/Pinion/blob/main/LICENSE.md)
 (`FSL-1.1-ALv2`). Free for **all** use — commercial, internal, on proprietary code, and on client
