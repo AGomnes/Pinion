@@ -35,8 +35,6 @@ internal static class ProveCommand
 
         cmd.SetAction(async (parse, ct) =>
         {
-            // Dormant gate — see GenerateCommand. `prove` is free under FSL-1.1-ALv2; a license is
-            // acknowledged if present but never required.
             var (status, _) = LicenseGate.Resolve(parse.GetValue(licenseOption));
             if (status.Valid) LicenseCommand.WarnIfNearExpiry(status);
 

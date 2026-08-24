@@ -118,10 +118,9 @@ public sealed class SeamApplier : IDisposable
         bool broke = run.TimedOut || run.Combined.Contains("error CS", StringComparison.Ordinal);
         if (!broke) return (true, Array.Empty<string>());
 
-        // Never leave a broken tree behind: restore every file we touched.
         foreach (var p in plans)
         {
-            try { File.WriteAllText(p.FilePath, p.OriginalText); } catch { /* best effort */ }
+            try { File.WriteAllText(p.FilePath, p.OriginalText); } catch {  }
         }
         var errors = run.TimedOut
             ? new[] { "build timed out — all seam edits were reverted" }

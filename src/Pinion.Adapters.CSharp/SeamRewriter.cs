@@ -51,7 +51,6 @@ internal static class SeamRewriter
     private const string ReadAnnKind = "pinion-seam-read";
     private static readonly SyntaxAnnotation MethodAnn = new("pinion-seam-method");
 
-    // ---- detection ----
 
     /// <summary>Symbol-resolved ambient reads inside a body. Conservative: static members of
     /// System.DateTime/System.DateTimeOffset/System.Guid only, and never inside nameof(…).</summary>
@@ -63,9 +62,7 @@ internal static class SeamRewriter
             ct.ThrowIfCancellationRequested();
             AmbientKind? kind = node switch
             {
-                // DateTime.Now / DateTimeOffset.UtcNow / … are static property READS.
                 MemberAccessExpressionSyntax ma when model.GetSymbolInfo(ma, ct).Symbol is IPropertySymbol p => ClassifyProperty(p),
-                // Guid.NewGuid() is a static method CALL — classify the whole invocation.
                 InvocationExpressionSyntax inv when model.GetSymbolInfo(inv, ct).Symbol is IMethodSymbol m => ClassifyMethod(m),
                 _ => null,
             };
@@ -95,12 +92,10 @@ internal static class SeamRewriter
 
     private static string Full(INamedTypeSymbol? t) => t?.ToDisplayString() ?? "";
 
-    // Replacing inside nameof(DateTime.Now) would silently change the string value — never touch it.
     private static bool InsideNameOf(SyntaxNode node) =>
         node.Ancestors().OfType<InvocationExpressionSyntax>()
             .Any(i => i.Expression is IdentifierNameSyntax { Identifier.ValueText: "nameof" });
 
-    // ---- rewrite ----
 
     /// <summary>
     /// Rewrite every eligible method in a document (optionally filtered): each becomes a delegating
@@ -131,8 +126,6 @@ internal static class SeamRewriter
 
         if (candidates.Count == 0) return (root, seamedInfo, skipped);
 
-        // Annotate reads + methods in ONE pass (annotations survive later tree rewrites; symbol work is
-        // done — everything below is pure syntax).
         var kindByNode = candidates.SelectMany(c => c.Reads).ToDictionary(r => r.Node, r => r.Kind);
         var toAnnotate = kindByNode.Keys.Concat(candidates.Select(c => (SyntaxNode)c.Method));
         var newRoot = root.ReplaceNodes(toAnnotate, (orig, rewritten) =>
@@ -160,7 +153,6 @@ internal static class SeamRewriter
         return null;
     }
 
-    // A method whose whole body is `=> SameName(…)` is the wrapper a previous run produced — idempotency.
     private static bool IsDelegatingWrapper(MethodDeclarationSyntax m)
     {
         ExpressionSyntax? expr = m.ExpressionBody?.Expression;
@@ -196,34 +188,27 @@ internal static class SeamRewriter
     {
         var readNodes = m.GetAnnotatedNodes(ReadAnnKind).ToList();
         var kindOf = readNodes.ToDictionary(n => n, n => Enum.Parse<AmbientKind>(n.GetAnnotations(ReadAnnKind).First().Data!));
-        // Parameter order = first occurrence order, so the signature reads like the body.
         var kindsInOrder = readNodes.OrderBy(n => n.SpanStart).Select(n => kindOf[n]).Distinct().ToList();
         SyntaxNode body = (SyntaxNode?)m.Body ?? m.ExpressionBody!;
-        var names = ResolveParamNames(m, body, kindsInOrder)!; // eligibility guaranteed non-null
+        var names = ResolveParamNames(m, body, kindsInOrder)!;
 
-        // The seam parameters are REQUIRED, so they must sit before any optional or `params` parameter
-        // (a required parameter after an optional one is CS1737; anything after `params` is illegal).
-        // Found dogfooding eShopOnWeb: GetUser(string token = null) + appended seam param broke the build.
         int insertAt = 0;
         while (insertAt < m.ParameterList.Parameters.Count
                && m.ParameterList.Parameters[insertAt].Default is null
                && !m.ParameterList.Parameters[insertAt].Modifiers.Any(SyntaxKind.ParamsKeyword))
             insertAt++;
 
-        // ---- seam overload: the original body with each ambient read replaced by its parameter ----
         var overload = m.ReplaceNodes(readNodes,
             (orig, _) => IdentifierName(names[kindOf[orig]]).WithTriviaFrom(orig));
         var newParams = kindsInOrder.Select((k, i) =>
         {
             var p = Parameter(Identifier(names[k]))
                 .WithType(ParseTypeName(Specs[k].ParamType).WithTrailingTrivia(Space));
-            // Space after the separating comma — except when this lands at the very front of the list.
             return insertAt > 0 || i > 0 ? p.WithLeadingTrivia(Space) : p;
         }).ToList();
 
         var allParams = m.ParameterList.Parameters.ToList();
         allParams.InsertRange(insertAt, newParams);
-        // The parameter now following the inserted block sits after a fresh comma — make sure it has a space.
         int after = insertAt + newParams.Count;
         if (after < allParams.Count && !allParams[after].GetLeadingTrivia().Any(t => t.IsKind(SyntaxKind.WhitespaceTrivia) || t.IsKind(SyntaxKind.EndOfLineTrivia)))
             allParams[after] = allParams[after].WithLeadingTrivia(Space);
@@ -236,7 +221,7 @@ internal static class SeamRewriter
 
         overload = overload
             .WithoutAnnotations(MethodAnn)
-            .WithAttributeLists(default) // attributes (routes, etc.) stay on the wrapper only — duplicating them can conflict
+            .WithAttributeLists(default)
             .WithModifiers(TokenList(overload.Modifiers.Where(t =>
                 !t.IsKind(SyntaxKind.OverrideKeyword) && !t.IsKind(SyntaxKind.VirtualKeyword)
                 && !t.IsKind(SyntaxKind.SealedKeyword) && !t.IsKind(SyntaxKind.NewKeyword))))
@@ -244,7 +229,6 @@ internal static class SeamRewriter
             .WithLeadingTrivia(overloadLead)
             .WithTrailingTrivia(m.GetTrailingTrivia());
 
-        // ---- wrapper: original signature, delegating with the exact original ambient expressions ----
         var forwarded = m.ParameterList.Parameters.Select(p =>
         {
             var arg = Argument(IdentifierName(p.Identifier.ValueText));
@@ -254,11 +238,9 @@ internal static class SeamRewriter
         }).ToList();
         var defaults = kindsInOrder.Select(k =>
         {
-            // Pass the very expression the user wrote (first occurrence), so the wrapper reads naturally.
             var firstNode = readNodes.Where(n => kindOf[n] == k).OrderBy(n => n.SpanStart).First();
             return Argument(ParseExpression(firstNode.ToString()));
         });
-        // Argument order mirrors the overload's parameter order (seam values inserted before optionals).
         var callArgs = forwarded.ToList();
         callArgs.InsertRange(insertAt, defaults);
         var call = InvocationExpression(
@@ -267,8 +249,7 @@ internal static class SeamRewriter
 
         var wrapper = m
             .WithoutAnnotations(MethodAnn)
-            .WithModifiers(TokenList(m.Modifiers.Where(t => !t.IsKind(SyntaxKind.AsyncKeyword)))) // it just returns the Task
-            // Drop the close paren's trailing trivia (a newline on block-bodied methods) so `=> …` stays on one line.
+            .WithModifiers(TokenList(m.Modifiers.Where(t => !t.IsKind(SyntaxKind.AsyncKeyword))))
             .WithParameterList(m.ParameterList.WithoutTrailingTrivia())
             .WithBody(null)
             .WithExpressionBody(ArrowExpressionClause(call).NormalizeWhitespace().WithLeadingTrivia(Space))

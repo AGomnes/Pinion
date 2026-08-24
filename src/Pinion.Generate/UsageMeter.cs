@@ -11,7 +11,7 @@ public static class ModelPricing
         string m = model.ToLowerInvariant();
         if (m.Contains("haiku")) return new ModelRate(1m, 5m);
         if (m.Contains("opus")) return new ModelRate(5m, 25m);
-        return new ModelRate(3m, 15m); // sonnet / default
+        return new ModelRate(3m, 15m);
     }
 
     /// <summary>

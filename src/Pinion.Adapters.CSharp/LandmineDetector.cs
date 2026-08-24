@@ -30,11 +30,6 @@ internal static class LandmineDetector
             || EndsWithAny(filePath, ".aspx.cs", ".ascx.cs", ".master.cs");
         if (webForms) found.Add(MigrationLandmine.WebForms);
 
-        // EF6 lives in System.Data.Entity; EF Core's DbContext lives in Microsoft.EntityFrameworkCore.
-        // Flag EF6 when the old namespace is imported, the unambiguously-old ObjectContext is a base, OR a
-        // DbContext/DbConfiguration base appears WITHOUT the EF Core namespace (a custom-named derived
-        // context — e.g. `CatalogDBContext : DbContext` — whose file may not import System.Data.Entity
-        // directly; that case was previously a dead branch and went undetected).
         bool efCore = Has(usings, "Microsoft.EntityFrameworkCore");
         bool ef6 =
             Has(usings, "System.Data.Entity")

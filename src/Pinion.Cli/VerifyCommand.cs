@@ -89,13 +89,11 @@ internal static class VerifyCommand
                 return 2;
             }
 
-            // --since: scope the run to the locked behaviors a change since <ref> could affect (changed
-            // methods + their callers). Returns null when nothing is affected → nothing to verify.
             IReadOnlyCollection<string>? onlyClasses = null;
             if (!string.IsNullOrWhiteSpace(since))
             {
                 var scope = await ResolveSinceScopeAsync(testProject, since!, source, vlog, ct);
-                if (scope is null) return 2; // a setup problem (bad ref / no source) — already reported
+                if (scope is null) return 2;
                 if (scope.Count == 0)
                 {
                     Console.Error.WriteLine($"No locked behavior is affected by changes since {since}. Nothing to verify.");
@@ -119,7 +117,6 @@ internal static class VerifyCommand
                 _ => BehaviorDiffRenderer.Console(report),
             };
 
-            // The HTML page is a file artifact — printing markup to the console is noise; write it instead.
             if (format != OutputFormat.Html)
                 Console.Out.WriteLine(rendered);
             else if (outFile is null && !open)
@@ -139,9 +136,8 @@ internal static class VerifyCommand
 
             if (open) await ReportOutput.OpenAsync(rendered, format, outFile, "pinion-verify", ct);
 
-            // Exit code = CI gate: 0 only when behavior is fully preserved.
             if (report.BuildFailed) return 1;
-            if (report.Total == 0) return 1;          // nothing locked to verify
+            if (report.Total == 0) return 1;
             return report.BehaviorPreserved ? 0 : 1;
         }
         catch (OperationCanceledException)
@@ -169,7 +165,7 @@ internal static class VerifyCommand
             {
                 if (CharacterizationFormat.ReadStamp(File.ReadAllText(file)) is int v) newest = Math.Max(newest, v);
             }
-            catch { /* unreadable — skip */ }
+            catch {  }
         }
         if (newest > CharacterizationFormat.Version)
             Console.Error.WriteLine(
@@ -245,7 +241,6 @@ internal static class VerifyCommand
         string? root = RunGit(workingDir, "rev-parse", "--show-toplevel")?.Trim();
         if (string.IsNullOrEmpty(root)) return null;
 
-        // `diff <ref> --name-only` = committed + working-tree changes relative to the ref.
         string? listed = RunGit(workingDir, "diff", "--name-only", since, "--");
         if (listed is null) return null;
 

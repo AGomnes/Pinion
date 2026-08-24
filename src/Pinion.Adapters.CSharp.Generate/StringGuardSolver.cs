@@ -14,8 +14,6 @@ namespace Pinion.Adapters.CSharp.Generate;
 /// </summary>
 internal static class StringGuardSolver
 {
-    // Don't emit absurd literals: cap synthesized lengths so a `Length > 100000` guard can't produce a
-    // 100k-char string in the generated test.
     private const int MaxSynthLength = 512;
 
     /// <summary>The string guards extracted for one parameter. <see cref="Any"/> is false when none apply.</summary>
@@ -29,9 +27,6 @@ internal static class StringGuardSolver
         bool RequireDigit,
         IReadOnlyList<string> Regexes)
     {
-        // Engage only for STRUCTURAL guards (length / char-class / affix / regex) — the conjunctions the
-        // constant-miner can't satisfy. Pure `== "literal"` equality is already covered by mined strings,
-        // so Exact alone does not trigger the solver (it's still included when it does engage).
         public bool Any => Lengths.Count > 0 || Prefix is not null || Suffix is not null
             || Contains.Count > 0 || RequireLetter || RequireDigit || Regexes.Count > 0;
     }
@@ -53,7 +48,6 @@ internal static class StringGuardSolver
         static bool IsRegexType(string typeText) =>
             typeText is "Regex" or "System.Text.RegularExpressions.Regex";
 
-        // `p.Length` member access.
         bool IsParamLength(ExpressionSyntax e) =>
             e is MemberAccessExpressionSyntax { Name.Identifier.ValueText: "Length" } m && IsParam(m.Expression);
 
@@ -61,11 +55,9 @@ internal static class StringGuardSolver
         {
             switch (node)
             {
-                // p.Length <op> N  (or N <op> p.Length) — collect the length boundary constants.
                 case BinaryExpressionSyntax be when IsComparison(be.Kind()):
                     if (IsParamLength(be.Left) && IntLiteral(be.Right) is { } n1) lengths.Add(n1);
                     else if (IsParamLength(be.Right) && IntLiteral(be.Left) is { } n2) lengths.Add(n2);
-                    // p == "literal" / "literal" == p
                     else if (be.IsKind(SyntaxKind.EqualsExpression))
                     {
                         if (IsParam(be.Left) && StringLiteral(be.Right) is { } r) exact.Add(r);
@@ -76,7 +68,6 @@ internal static class StringGuardSolver
                 case InvocationExpressionSyntax inv when inv.Expression is MemberAccessExpressionSyntax ma:
                     string member = ma.Name.Identifier.ValueText;
 
-                    // p.StartsWith("x") / p.EndsWith("x") / p.Contains("x") / p.Equals("x")
                     if (IsParam(ma.Expression) && inv.ArgumentList.Arguments.Count >= 1
                         && StringLiteral(inv.ArgumentList.Arguments[0].Expression) is { } lit && lit.Length > 0)
                     {
@@ -89,16 +80,12 @@ internal static class StringGuardSolver
                         }
                     }
 
-                    // char.IsLetter(...) / char.IsDigit(...) anywhere → the input is expected to vary on those.
-                    // The receiver `char` is a predefined-type keyword (not an identifier), so match by text;
-                    // also accept the qualified `Char`/`System.Char` forms.
                     if (ma.Expression.ToString() is "char" or "Char" or "System.Char" or "global::System.Char")
                     {
                         if (member is "IsLetter" or "IsLetterOrDigit") requireLetter = true;
                         if (member is "IsDigit" or "IsLetterOrDigit") requireDigit = true;
                     }
 
-                    // Regex.IsMatch(p, "pattern" [, options])  OR  new Regex("pattern").IsMatch(p)
                     if (member == "IsMatch")
                     {
                         var a = inv.ArgumentList.Arguments;
@@ -135,34 +122,26 @@ internal static class StringGuardSolver
         var values = new List<string>();
         void Add(string s) { if (s.Length <= MaxSynthLength) values.Add(s); }
 
-        // 1. Base witness — alnum (letter+digit), long enough to clear the smallest length floor.
         Add(Alnum(baseLen));
 
-        // 2. Just under the smallest length floor — exercises the minimum-length guard.
         if (floor >= 2) Add(Alnum(floor - 1));
 
-        // 3/4. Char-class near-misses — only digits (no letter), only letters (no digit).
         if (g.RequireLetter || g.RequireDigit)
         {
-            Add(Digits(baseLen));  // no letter
-            Add(Letters(baseLen)); // no digit
+            Add(Digits(baseLen));
+            Add(Letters(baseLen));
         }
 
-        // 5/6/7. Affix variants — cover the "has this affix" side regardless of guard polarity.
         if (g.Prefix is { } p) Add(p + Alnum(baseLen));
         if (g.Contains.Count > 0) Add(Alnum(baseLen) + g.Contains[0]);
         if (g.Suffix is { } s) Add(Alnum(baseLen) + s);
 
-        // 8. Just over an upper length bound (when it's a sane size).
         if (g.Lengths.Count > 0)
         {
             int hi = g.Lengths.Max();
             if (hi > floor && hi < MaxSynthLength) Add(Alnum(hi + 1));
         }
 
-        // 9. Regex guards: a string that MATCHES the pattern (reaches the accept branch the simple witness
-        //    never hits) plus a verified non-match. RegexSampler only returns a .NET-verified match, so a
-        //    pattern it can't model is simply skipped.
         foreach (var pat in g.Regexes)
         {
             if (RegexSampler.GenerateMatch(pat) is not { } match) continue;
@@ -170,13 +149,11 @@ internal static class StringGuardSolver
             if (RegexSampler.GenerateNonMatch(pat, match) is { } nonMatch) Add(nonMatch);
         }
 
-        // 10. Exact-equality literals — trivially exercise the `== "literal"` branch.
         foreach (var e in g.Exact) Add(e);
 
         return values.Distinct(StringComparer.Ordinal).ToList();
     }
 
-    // Alphanumeric, matches the synthesizer's RichString so the no-affix base stays identical.
     private static string Alnum(int len) => Repeat("Ab1", len);
     private static string Letters(int len) => Repeat("Abc", len);
     private static string Digits(int len) => Repeat("123", len);

@@ -28,12 +28,9 @@ public sealed class BehaviorVerifier
         string full = Path.GetFullPath(testProjectPath);
         string outDir = Path.Combine(Path.GetDirectoryName(full)!, generatedSubdir);
 
-        // Clear any stale received files so we only interpret THIS run's mismatches.
         if (Directory.Exists(outDir))
             foreach (var stale in Directory.GetFiles(outDir, "*.received.*")) { try { File.Delete(stale); } catch { } }
 
-        // Scope (verify --since): run only the characterization classes covering changed code. An empty set
-        // means "scope to nothing" — the caller handles that before calling us, so here null/empty = run all.
         bool scoped = onlyTestClasses is { Count: > 0 };
         string filter = "FullyQualifiedName~Pinion.Generated";
         if (scoped)
@@ -55,8 +52,6 @@ public sealed class BehaviorVerifier
         {
             foreach (var verified in Directory.GetFiles(outDir, "*.verified.*").OrderBy(p => p, StringComparer.Ordinal))
             {
-                // When scoped, only count snapshots whose class is in the affected set (filename is
-                // "<ClassName>.<method>_characterization.verified.<ext>").
                 if (classes is not null && !classes.Contains(ClassNameOf(verified))) continue;
                 string received = verified.Replace(".verified.", ".received.");
                 string name = SnapshotName(verified);
@@ -82,7 +77,7 @@ public sealed class BehaviorVerifier
     {
         string className = ClassNameOf(verifiedPath);
         className = Regex.Replace(className, "_CharacterizationTests$", "");
-        className = Regex.Replace(className, "_[0-9a-f]{6}$", "");   // overload disambiguation hash
+        className = Regex.Replace(className, "_[0-9a-f]{6}$", "");
         return className.Replace('_', '.');
     }
 

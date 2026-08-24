@@ -15,8 +15,8 @@ public class BehaviorDiffTests
     public void Changed_line_shows_minus_was_and_plus_now()
     {
         string diff = BehaviorDiff.Unified("Outcome: 100", "Outcome: 120");
-        Assert.Contains("- Outcome: 100", diff);  // − was locked
-        Assert.Contains("+ Outcome: 120", diff);  // + current code
+        Assert.Contains("- Outcome: 100", diff);
+        Assert.Contains("+ Outcome: 120", diff);
     }
 
     [Fact]
@@ -25,7 +25,7 @@ public class BehaviorDiffTests
         string locked = "Input: 5\nOutcome: 100\nRegion: NO";
         string current = "Input: 5\nOutcome: 120\nRegion: NO";
         string diff = BehaviorDiff.Unified(locked, current);
-        Assert.Contains("  Input: 5", diff);   // context line (two-space prefix)
+        Assert.Contains("  Input: 5", diff);
         Assert.Contains("- Outcome: 100", diff);
         Assert.Contains("+ Outcome: 120", diff);
     }
@@ -82,11 +82,11 @@ public class BehaviorDiffReportTests
         string html = BehaviorDiffRenderer.Html(report);
 
         Assert.StartsWith("<!DOCTYPE html>", html);
-        Assert.DoesNotContain("src=\"http", html);              // offline — no external scripts/CDN
-        Assert.Contains("<details", html);                       // collapsible per changed method (no JS)
+        Assert.DoesNotContain("src=\"http", html);
+        Assert.Contains("<details", html);
         Assert.Contains("PriceEngine.ApplyDiscounts", html);
-        Assert.Contains("class=\"del\"", html);                  // − was locked
-        Assert.Contains("class=\"ins\"", html);                  // + current code
+        Assert.Contains("class=\"del\"", html);
+        Assert.Contains("class=\"ins\"", html);
     }
 
     [Fact]

@@ -49,17 +49,13 @@ public sealed class VisualBasicAdapter : ILanguageAdapter
     internal async Task<IReadOnlyList<CodeUnit>> AnalyzeSolutionAsync(Solution solution, string? targetProjectPath, CancellationToken ct)
     {
         {
-            // Which production members any test project references — turns "untested" into a fact.
             var testedIds = await CollectTestedMethodIdsAsync(solution, ct).ConfigureAwait(false);
 
-            // Pass 1: gather every VB production member with its model + imports.
             var raw = new List<RawVb>();
             foreach (var project in solution.Projects)
             {
                 ct.ThrowIfCancellationRequested();
                 if (project.Language != LanguageNames.VisualBasic) continue;
-                // Scope a single-project analyze to that project (don't pull in referenced projects'
-                // members). The source-scan project has no file path — it IS the target — so never filter it.
                 if (targetProjectPath is not null && project.FilePath is not null && !SamePath(project.FilePath, targetProjectPath)) continue;
 
                 var compilation = await project.GetCompilationAsync(ct).ConfigureAwait(false);
@@ -68,7 +64,7 @@ public sealed class VisualBasicAdapter : ILanguageAdapter
                 foreach (var tree in compilation.SyntaxTrees)
                 {
                     ct.ThrowIfCancellationRequested();
-                    if (GeneratedCode.IsGenerated(tree.FilePath)) continue; // skip My Project / *.designer.vb noise
+                    if (GeneratedCode.IsGenerated(tree.FilePath)) continue;
                     var model = compilation.GetSemanticModel(tree);
                     var root = await tree.GetRootAsync(ct).ConfigureAwait(false);
                     var imports = FileImports(root);
@@ -79,11 +75,9 @@ public sealed class VisualBasicAdapter : ILanguageAdapter
             }
 
             var byId = new Dictionary<string, RawVb>(StringComparer.Ordinal);
-            foreach (var m in raw) byId.TryAdd(m.Id, m); // first declaration wins (partials/overloads share an id rarely)
+            foreach (var m in raw) byId.TryAdd(m.Id, m);
             var knownIds = byId.Keys.ToHashSet(StringComparer.Ordinal);
 
-            // Syntactic (name, arity) → ids index, to recover calls Roslyn can't resolve on source-scanned
-            // (unrestored) VB — parity with the C# adapter's blast-radius fallback.
             var nameArity = new Dictionary<(string, int), List<string>>();
             foreach (var m in byId.Values)
             {
@@ -91,7 +85,6 @@ public sealed class VisualBasicAdapter : ILanguageAdapter
                 (nameArity.TryGetValue(key, out var list) ? list : nameArity[key] = new()).Add(m.Id);
             }
 
-            // Pass 2: call graph (callees within the analyzed set → callers) + referenced names for tagging.
             var calleesById = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
             var refNamesById = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
             var callersById = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
@@ -105,7 +98,6 @@ public sealed class VisualBasicAdapter : ILanguageAdapter
                     (callersById.TryGetValue(callee, out var set) ? set : callersById[callee] = new(StringComparer.Ordinal)).Add(m.Id);
             }
 
-            // Pass 3: assemble the enriched IR.
             var units = new List<CodeUnit>(byId.Count);
             foreach (var m in byId.Values)
             {
@@ -151,7 +143,7 @@ public sealed class VisualBasicAdapter : ILanguageAdapter
         }
 
         Solution scan = VbSourceScanLoader.Load(path, _log);
-        return (scan, scan.Workspace); // AdhocWorkspace, owned here → dispose
+        return (scan, scan.Workspace);
     }
 
     /// <summary>One gathered VB member with the context the enrichment passes need.</summary>
@@ -168,9 +160,6 @@ public sealed class VisualBasicAdapter : ILanguageAdapter
     {
         foreach (var stmt in root.DescendantNodes().OfType<MethodBaseSyntax>())
         {
-            // Auto-property accessors have no AccessorBlock (no AccessorStatementSyntax), so they never
-            // appear here. Declare/Delegate/event statements and event add/remove/raise handlers are
-            // filtered out by MethodKind below.
             if (stmt is not (MethodStatementSyntax or SubNewStatementSyntax or OperatorStatementSyntax or AccessorStatementSyntax)) continue;
             if (model.GetDeclaredSymbol(stmt, ct) is not IMethodSymbol symbol) continue;
             if (symbol.MethodKind is not (MethodKind.Ordinary or MethodKind.Constructor
@@ -195,8 +184,6 @@ public sealed class VisualBasicAdapter : ILanguageAdapter
             if (node is not (InvocationExpressionSyntax or ObjectCreationExpressionSyntax)) continue;
 
             var info = m.Model.GetSymbolInfo(node, ct);
-            // Prefer the resolved symbol; on unrestored VB fall back to the overload candidates Roslyn knew
-            // but couldn't pick, so the call graph stays populated.
             IMethodSymbol? called = info.Symbol as IMethodSymbol
                 ?? info.CandidateSymbols.OfType<IMethodSymbol>().FirstOrDefault();
 
@@ -210,8 +197,6 @@ public sealed class VisualBasicAdapter : ILanguageAdapter
                 continue;
             }
 
-            // Fully unresolved (typical on a source scan of legacy VB): recover blast-radius with a
-            // SYNTACTIC name+arity match, used only when UNAMBIGUOUS (exactly one in-set member).
             if (node is InvocationExpressionSyntax inv && InvokedName(inv) is { } name)
             {
                 refNames.Add(name);
@@ -226,8 +211,8 @@ public sealed class VisualBasicAdapter : ILanguageAdapter
     /// <summary>The simple method name invoked, syntactically — for the resolution-free blast-radius fallback.</summary>
     private static string? InvokedName(InvocationExpressionSyntax inv) => inv.Expression switch
     {
-        MemberAccessExpressionSyntax ma => ma.Name.Identifier.ValueText, // obj.Method() / Me.Method()
-        IdentifierNameSyntax id => id.Identifier.ValueText,              // Method()
+        MemberAccessExpressionSyntax ma => ma.Name.Identifier.ValueText,
+        IdentifierNameSyntax id => id.Identifier.ValueText,
         _ => null,
     };
 
@@ -283,7 +268,6 @@ public sealed class VisualBasicAdapter : ILanguageAdapter
 
         var parameters = symbol.Parameters.Select(p => new ParamInfo(p.Name, VbSymbols.ShortType(p.Type))).ToList();
 
-        // Domain tags: reuse the engine's language-neutral tagger (now fed referenced names too).
         var tags = DomainTagger.Tag(
             symbol.Name,
             symbol.ContainingType?.Name ?? "",
@@ -291,7 +275,6 @@ public sealed class VisualBasicAdapter : ILanguageAdapter
             symbol.ReturnsVoid ? "void" : VbSymbols.ShortType(symbol.ReturnType),
             refNames);
 
-        // Landmines: same .NET vocabulary as C#, fed from VB syntax (Imports / Inherits / attributes / file).
         var typeBlock = m.Decl.Ancestors().OfType<TypeBlockSyntax>().FirstOrDefault();
         var landmines = VbLandmineDetector.Detect(m.Imports, BaseTypeNames(typeBlock), AttributeNames(m.Decl, typeBlock), span.Path);
 
@@ -314,7 +297,6 @@ public sealed class VisualBasicAdapter : ILanguageAdapter
             MigrationLandmines: landmines);
     }
 
-    // ---- VB syntax facts ----
 
     private static IReadOnlyList<string> FileImports(SyntaxNode root) =>
         root.DescendantNodes().OfType<SimpleImportsClauseSyntax>()

@@ -34,18 +34,17 @@ public class AnthropicClientHttpTests
         Assert.Contains("class T {}", resp.Text);
         Assert.Equal(11, resp.Usage.InputTokens);
         Assert.Equal(22, resp.Usage.OutputTokens);
-        Assert.Equal(7, resp.Usage.CacheReadInputTokens);   // caching round-trips end-to-end
+        Assert.Equal(7, resp.Usage.CacheReadInputTokens);
         Assert.Equal(3, resp.Usage.CacheCreationInputTokens);
     }
 
     [Theory]
-    [InlineData(429, true)]   // rate limit → (retried, then) abort the run
-    [InlineData(401, true)]   // auth → abort immediately (not retryable)
-    [InlineData(500, false)]  // transient server error → don't abort
+    [InlineData(429, true)]
+    [InlineData(401, true)]
+    [InlineData(500, false)]
     public async Task Error_status_becomes_LlmApiException_with_correct_abort_flag(int status, bool shouldAbort)
     {
         using var server = new MockAnthropicServer();
-        // Enough errors to exhaust retries for the retryable statuses (429/500); 401 throws on attempt 1.
         for (int i = 0; i < 6; i++) server.EnqueueError(status, message: "nope");
 
         using var client = new AnthropicClient("k", server.BaseUrl) { MaxRetries = 2, RetryBaseDelay = TimeSpan.Zero };
@@ -59,14 +58,14 @@ public class AnthropicClientHttpTests
     public async Task Transient_error_is_retried_then_succeeds()
     {
         using var server = new MockAnthropicServer();
-        server.EnqueueError(503);                                  // transient overload/gateway
-        server.EnqueueMessage("```csharp\nclass T {}\n```");       // then a normal success
+        server.EnqueueError(503);
+        server.EnqueueMessage("```csharp\nclass T {}\n```");
 
         using var client = new AnthropicClient("k", server.BaseUrl) { RetryBaseDelay = TimeSpan.Zero };
         var resp = await client.CompleteAsync(Req(), default);
 
         Assert.Contains("class T {}", resp.Text);
-        Assert.Equal(2, server.Requests.Count);                   // one retry, not an abort
+        Assert.Equal(2, server.Requests.Count);
     }
 
     [Fact]
@@ -78,13 +77,12 @@ public class AnthropicClientHttpTests
         using var client = new AnthropicClient("k", server.BaseUrl) { RetryBaseDelay = TimeSpan.Zero };
         await Assert.ThrowsAsync<LlmApiException>(() => client.CompleteAsync(Req(), default));
 
-        Assert.Single(server.Requests);                            // not retried
+        Assert.Single(server.Requests);
     }
 
     [Fact]
     public async Task Compile_run_repair_loop_works_over_real_http()
     {
-        // The model returns a broken test first, then a fixed one after seeing the compiler error.
         using var server = new MockAnthropicServer();
         server.EnqueueMessage("```csharp\n// broken\n```");
         server.EnqueueMessage("```csharp\n// fixed\n```");
@@ -98,8 +96,8 @@ public class AnthropicClientHttpTests
 
         Assert.True(result.Success);
         Assert.Equal(2, result.Attempts);
-        Assert.Equal(2, server.Requests.Count);                       // two real round-trips
-        Assert.Contains("error CS1002", server.Requests[1].Body);     // the repair turn fed the error back
+        Assert.Equal(2, server.Requests.Count);
+        Assert.Contains("error CS1002", server.Requests[1].Body);
     }
 
     private static CodeUnit Unit() => new(

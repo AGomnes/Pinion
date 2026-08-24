@@ -49,7 +49,7 @@ public sealed class MutationTester
         }
         finally
         {
-            try { Directory.Delete(outDir, recursive: true); } catch { /* best effort */ }
+            try { Directory.Delete(outDir, recursive: true); } catch {  }
         }
     }
 

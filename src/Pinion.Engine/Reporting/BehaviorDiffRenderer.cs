@@ -64,7 +64,6 @@ public static class BehaviorDiffRenderer
             i++;
         }
 
-        // Triage: connect the diff to the next action. An intended change is re-baselined; the rest are regressions.
         sb.AppendLine(new string('─', 60));
         sb.AppendLine("TRIAGE — review each diff above:");
         sb.AppendLine($"  • Intended?  re-baseline it:  pinion accept \"{report.TestProject}\" --name <method>");
@@ -102,7 +101,6 @@ public static class BehaviorDiffRenderer
             return Close(sb);
         }
 
-        // Headline cards.
         sb.Append("<section class=\"cards\">\n");
         Card(sb, report.Total.ToString(), "methods verified", "neutral");
         Card(sb, report.Identical.ToString(), "behave identically", "good");

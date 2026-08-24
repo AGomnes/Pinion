@@ -135,10 +135,6 @@ internal static class GenerateCommand
         Action<string> log = msg => Console.Error.WriteLine(msg);
         Action<string>? vlog = verbose ? log : null;
 
-        // Licensing is DORMANT. Pinion is source-available under FSL-1.1-ALv2 and `generate` is free
-        // for everyone — no key, no activation (see README "License"). The gate below is retained but
-        // NEVER blocks; it only acknowledges a license if one happens to be present, so a separately
-        // negotiated commercial agreement stays possible later without rebuilding the machinery.
         if (!dryRun)
         {
             var (status, source) = LicenseGate.Resolve(license);
@@ -151,8 +147,6 @@ internal static class GenerateCommand
 
         try
         {
-            // VB targets: analyze via the VB adapter; synthesis emits C# tests against the VB assembly.
-            // Deterministic-only for now — the AI context extractor reads C# syntax.
             bool isVb = AnalyzeCommand.IsVisualBasic(path);
             if (isVb && !provider.Equals("deterministic", StringComparison.OrdinalIgnoreCase))
             {
@@ -174,15 +168,11 @@ internal static class GenerateCommand
                 return 1;
             }
 
-            // Exclusions (--exclude + .pinionignore) — these methods are never run and never sent.
             var exclusions = LoadPatterns(path, exclude, ".pinionignore");
             var notExcluded = matched.Where(u => !TargetGuards.IsExcluded(u, exclusions)).ToList();
             if (matched.Count != notExcluded.Count)
                 Console.Error.WriteLine($"Excluded {matched.Count - notExcluded.Count} method(s) by exclude rules.");
 
-            // Side-effect safety: generating a test EXECUTES the method, so skip io-tagged ones
-            // (files/DB/network) unless the user explicitly opts in. money/auth are sensitivity tags,
-            // not side-effects — those run (snapshots are scrubbed), and are flagged below for review.
             List<CodeUnit> runnable;
             if (allowSideEffects)
             {
@@ -206,14 +196,10 @@ internal static class GenerateCommand
                 return 1;
             }
 
-            // Safety cap so an accidental broad selection can't fan out into a huge run.
             var targets = runnable.Take(Math.Max(1, maxTargets)).ToList();
             if (runnable.Count > targets.Count)
                 Console.Error.WriteLine($"Selected {runnable.Count} methods; capping to {targets.Count} (--max-targets). Raise --max-targets to do more.");
 
-            // The paid generate adapter (separate from the free analyze adapter above).
-            // Resolve full references via MSBuild only when it actually registered at startup.
-            // `using` so its synthesizer's MSBuild workspaces are disposed when the command ends.
             using var genAdapter = new CSharpTestGenerator
             {
                 RunTimeoutSeconds = timeoutSeconds,
@@ -221,11 +207,9 @@ internal static class GenerateCommand
                 Log = vlog,
             };
 
-            // ---- Default path: deterministic, offline, no AI, reproducible snapshots ----
             if (provider.Equals("deterministic", StringComparison.OrdinalIgnoreCase))
                 return await RunDeterministicAsync(genAdapter, targets, path, testProject, dryRun, ct);
 
-            // ---- Opt-in AI / LLM path (everything below only runs when explicitly chosen) ----
             ILlmClient llm;
             if (dryRun || provider.Equals("heuristic", StringComparison.OrdinalIgnoreCase))
             {
@@ -233,7 +217,6 @@ internal static class GenerateCommand
             }
             else if (provider.Equals("heuristic-faulty", StringComparison.OrdinalIgnoreCase))
             {
-                // Offline proof of the repair loop: breaks the first attempt, recovers on the next.
                 llm = new FaultInjectingLlmClient(new HeuristicLlmClient(), failFirst: 1);
             }
             else
@@ -244,8 +227,6 @@ internal static class GenerateCommand
                     Console.Error.WriteLine("error: ANTHROPIC_API_KEY is not set. Set it, or use the default --provider deterministic, or --dry-run.");
                     return 1;
                 }
-                // Catch a typo'd model id before it spends a (billable) call on a 404. Advisory — a
-                // newer id Pinion doesn't list yet is allowed through.
                 if (baseUrl == "https://api.anthropic.com" && !ModelCatalog.IsKnown(model))
                     Console.Error.WriteLine($"warning: '{model}' is not a model id Pinion recognizes. " +
                         $"Known: {string.Join(", ", ModelCatalog.Known)}. Proceeding — pass a correct id if this was a typo.");
@@ -253,7 +234,6 @@ internal static class GenerateCommand
                 llm = new AnthropicClient(apiKey, baseUrl);
             }
 
-            // Emitting/running tests needs a host test project (unless dry-run).
             if (!dryRun)
             {
                 if (testProject is null)
@@ -273,9 +253,6 @@ internal static class GenerateCommand
             bool billable = !dryRun && llm is AnthropicClient;
             var meter = new UsageMeter();
 
-            // Never-send (--no-send + .pinionnosend): source for these files/namespaces must not
-            // leave the machine. Enforced authoritatively inside TestGenerator (before any send or
-            // dry-run preview); surfaced here so the user sees the guarantee up front.
             var neverSend = LoadPatterns(path, noSend, ".pinionnosend");
             int withheld = neverSend.Count == 0 ? 0 : targets.Count(u => TargetGuards.IsNeverSend(u, neverSend));
             if (withheld > 0)
@@ -382,7 +359,6 @@ internal static class GenerateCommand
 
         Console.Error.WriteLine($"Characterizing {targets.Count} method(s) — deterministic, offline (no AI, no API cost), one build for the batch.");
 
-        // Batch: synthesize + emit all, then build/run once (not once per method).
         var results = await genAdapter.GenerateDeterministicBatchAsync(targets, sourceRoot, ct);
 
         int ok = 0;
@@ -441,8 +417,6 @@ internal static class GenerateCommand
                 .ToList();
         }
 
-        // Default: the highest-risk untested methods that are actually characterizable —
-        // only public methods on public types can be exercised from an external test project.
         var report = ReportBuilder.Build(path, units);
         return report.Hotspots
             .Where(s => !s.Unit.HasTests && s.Unit.IsPublicEntryPoint)

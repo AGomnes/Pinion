@@ -16,7 +16,6 @@ public sealed class HeuristicLlmClient : ILlmClient
 
     public Task<LlmResponse> CompleteAsync(LlmRequest request, CancellationToken ct)
     {
-        // Read the structured header the PromptBuilder placed at the top of the first user turn.
         string firstUser = request.Messages.FirstOrDefault(m => m.Role == "user")?.Content ?? "";
         string ns = HeaderValue(firstUser, "Namespace");
         string type = HeaderValue(firstUser, "Type");
@@ -42,7 +41,6 @@ internal static class CSharpTestSynthesizer
         string safeMethod = SafeIdentifier(methodName);
         string className = $"{type}_{safeMethod}_CharacterizationTests";
 
-        // Build up to 3 input rows by zipping each parameter's sample values.
         var sampleSets = parameters.Select(p => SampleValues(p.Type)).ToList();
         int rows = sampleSets.Count == 0 ? 1 : Math.Min(3, sampleSets.Max(s => s.Count));
 
@@ -127,7 +125,6 @@ internal static class CSharpTestSynthesizer
         return (name, returnsVoid, isStatic, parameters);
     }
 
-    // Split a parameter list on commas that are not inside generic angle brackets.
     private static IEnumerable<string> SplitTopLevel(string s)
     {
         int depth = 0, start = 0;

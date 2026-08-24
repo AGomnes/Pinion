@@ -15,8 +15,6 @@ internal static class RoslynSymbols
         typeQualificationStyle: SymbolDisplayTypeQualificationStyle.NameAndContainingTypesAndNamespaces,
         genericsOptions: SymbolDisplayGenericsOptions.IncludeTypeParameters,
         memberOptions: SymbolDisplayMemberOptions.IncludeParameters | SymbolDisplayMemberOptions.IncludeContainingType,
-        // IncludeParamsRefOut so overloads that differ only by ref/out/in (Foo(int) vs Foo(ref int)) get
-        // distinct ids and aren't collapsed into one analyzed unit.
         parameterOptions: SymbolDisplayParameterOptions.IncludeType | SymbolDisplayParameterOptions.IncludeParamsRefOut,
         miscellaneousOptions: SymbolDisplayMiscellaneousOptions.UseSpecialTypes);
 
@@ -42,8 +40,6 @@ internal static class RoslynSymbols
 
     public static string MethodId(IMethodSymbol method)
     {
-        // Local functions aren't type members, so two same-named locals in different methods would share
-        // an id. Qualify by the enclosing member (recursively for nested locals) to keep ids unique+stable.
         if (method.MethodKind == MethodKind.LocalFunction && method.ContainingSymbol is IMethodSymbol outer)
         {
             string pars = string.Join(", ", method.Parameters.Select(p => RefPrefix(p.RefKind) + ShortType(p.Type)));
@@ -82,7 +78,7 @@ internal static class RoslynSymbols
         MethodKind.EventAdd => AssociatedName(method) + ".add",
         MethodKind.EventRemove => AssociatedName(method) + ".remove",
         MethodKind.LocalFunction => method.Name + " (local)",
-        _ => method.Name, // ordinary methods, user-defined operators (op_Addition), conversions
+        _ => method.Name,
     };
 
     private static string AssociatedName(IMethodSymbol accessor) => accessor.AssociatedSymbol?.Name ?? accessor.Name;

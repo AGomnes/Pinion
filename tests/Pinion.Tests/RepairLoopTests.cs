@@ -11,7 +11,6 @@ public class RepairLoopTests
         1, 5, Array.Empty<string>(), Array.Empty<string>(), Array.Empty<string>(),
         false, true, Array.Empty<string>());
 
-    // Records what the model was sent, and replays scripted responses.
     private sealed class ScriptedLlm : ILlmClient
     {
         private readonly Queue<string> _responses;
@@ -25,7 +24,6 @@ public class RepairLoopTests
         }
     }
 
-    // Emits whatever it's given; replays scripted compile/run outcomes.
     private sealed class ScriptedAdapter : IGenerationAdapter
     {
         private readonly Queue<ExecutionResult> _outcomes;
@@ -59,7 +57,6 @@ public class RepairLoopTests
         Assert.Equal(2, result.Attempts);
         Assert.NotNull(result.SnapshotPath);
 
-        // The repair turn fed the compiler error back: 2nd request has more messages than the 1st.
         Assert.Equal(2, llm.Requests.Count);
         Assert.True(llm.Requests[1].Messages.Count > llm.Requests[0].Messages.Count);
         Assert.Contains(llm.Requests[1].Messages, m => m.Content.Contains("error CS1002"));
@@ -68,7 +65,7 @@ public class RepairLoopTests
     [Fact]
     public async Task Gives_up_after_max_repairs_and_reports_diagnostics()
     {
-        var llm = new ScriptedLlm("bad1", "bad2"); // 1 initial + 1 repair = MaxRepairAttempts:1
+        var llm = new ScriptedLlm("bad1", "bad2");
         var adapter = new ScriptedAdapter(
             new ExecutionResult(false, false, new[] { "error CS0103: undefined" }, null),
             new ExecutionResult(false, false, new[] { "error CS0103: still undefined" }, null));
@@ -77,7 +74,7 @@ public class RepairLoopTests
         var result = await new TestGenerator(adapter, llm, options).GenerateAsync(Unit(), default);
 
         Assert.False(result.Success);
-        Assert.Equal(2, result.Attempts); // initial + 1 repair
+        Assert.Equal(2, result.Attempts);
         Assert.Contains(result.Diagnostics, d => d.Contains("CS0103"));
     }
 }

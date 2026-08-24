@@ -20,7 +20,6 @@ public class StringGuardSolverTests
     [Fact]
     public void Extracts_length_charclass_and_prefix_guards()
     {
-        // The AuthHandler.ValidateToken shape: length window + has-letter + has-digit + not-startswith.
         var g = Extract("""
             bool M(string token) {
                 if (string.IsNullOrWhiteSpace(token)) return false;
@@ -51,12 +50,12 @@ public class StringGuardSolverTests
 
         var c = StringGuardSolver.Candidates(g);
 
-        Assert.Contains(c, s => s.Length == 16 && s.Any(char.IsLetter) && s.Any(char.IsDigit)); // clears the conjunction
-        Assert.Contains(c, s => s.Length == 15);                          // under the length floor
-        Assert.Contains(c, s => s.Length == 16 && !s.Any(char.IsLetter)); // all digits → fails has-letter
-        Assert.Contains(c, s => s.Length == 16 && !s.Any(char.IsDigit));  // all letters → fails has-digit
-        Assert.Contains(c, s => s.StartsWith("-"));                       // exercises the StartsWith guard
-        Assert.Contains(c, s => s.Length == 257);                        // just over the upper bound
+        Assert.Contains(c, s => s.Length == 16 && s.Any(char.IsLetter) && s.Any(char.IsDigit));
+        Assert.Contains(c, s => s.Length == 15);
+        Assert.Contains(c, s => s.Length == 16 && !s.Any(char.IsLetter));
+        Assert.Contains(c, s => s.Length == 16 && !s.Any(char.IsDigit));
+        Assert.Contains(c, s => s.StartsWith("-"));
+        Assert.Contains(c, s => s.Length == 257);
     }
 
     [Fact]
@@ -75,7 +74,7 @@ public class StringGuardSolverTests
         Assert.Equal("9", g.Suffix);
 
         var c = StringGuardSolver.Candidates(g);
-        Assert.Contains(c, s => s.StartsWith("PRD-")); // covers the has-affix side regardless of polarity
+        Assert.Contains(c, s => s.StartsWith("PRD-"));
         Assert.Contains(c, s => s.Contains("X"));
         Assert.Contains(c, s => s.EndsWith("9"));
     }
@@ -83,8 +82,6 @@ public class StringGuardSolverTests
     [Fact]
     public void A_pure_equality_string_is_left_to_the_constant_miner()
     {
-        // No length / char-class / affix guard — only `== "literal"`. The solver must NOT engage (the
-        // mined-strings path already covers this), so behavior for switch/equality strings is unchanged.
         var g = Extract("""
             string M(string region) {
                 if (region == "NO") return "n";
@@ -116,8 +113,8 @@ public class StringGuardSolverTests
         Assert.Contains(pat, g.Regexes);
 
         var c = StringGuardSolver.Candidates(g);
-        Assert.Contains(c, s => System.Text.RegularExpressions.Regex.IsMatch(s, pat));   // reaches the accept branch
-        Assert.Contains(c, s => !System.Text.RegularExpressions.Regex.IsMatch(s, pat));  // and the reject branch
+        Assert.Contains(c, s => System.Text.RegularExpressions.Regex.IsMatch(s, pat));
+        Assert.Contains(c, s => !System.Text.RegularExpressions.Regex.IsMatch(s, pat));
     }
 
     [Fact]

@@ -35,7 +35,6 @@ internal static class VbSynthesis
             {
                 if (stmt is not (MethodStatementSyntax or SubNewStatementSyntax)) continue;
                 if (stmt.GetLocation().GetLineSpan().StartLinePosition.Line + 1 != unit.StartLine) continue;
-                // The VB GetDeclaredSymbol overloads are per concrete statement type (RS1039 on the base).
                 IMethodSymbol? symbol = stmt switch
                 {
                     MethodStatementSyntax ms => model.GetDeclaredSymbol(ms, ct),
@@ -50,7 +49,7 @@ internal static class VbSynthesis
     }
 
     private static bool NameMatches(IMethodSymbol m, string simpleName) =>
-        string.Equals(m.Name, simpleName, StringComparison.OrdinalIgnoreCase) // VB is case-insensitive
+        string.Equals(m.Name, simpleName, StringComparison.OrdinalIgnoreCase)
         || (m.MethodKind == MethodKind.Constructor && simpleName is "ctor" or ".ctor");
 
     /// <summary>
@@ -90,16 +89,16 @@ internal static class VbSynthesis
                 case BinaryExpressionSyntax be when IsComparison(be.Kind()):
                     Take(be.Left); Take(be.Right);
                     break;
-                case SimpleCaseClauseSyntax simple:        // Case "NO"
+                case SimpleCaseClauseSyntax simple:
                     Take(simple.Value);
                     break;
-                case RangeCaseClauseSyntax range:          // Case 1 To 10
+                case RangeCaseClauseSyntax range:
                     Take(range.LowerBound); Take(range.UpperBound);
                     break;
-                case RelationalCaseClauseSyntax rel:       // Case Is > 10000
+                case RelationalCaseClauseSyntax rel:
                     Take(rel.Value);
                     break;
-                case InvocationExpressionSyntax inv        // s.StartsWith("CLEARANCE"), coupon.Contains("SAVE")
+                case InvocationExpressionSyntax inv
                     when inv.Expression is MemberAccessExpressionSyntax ma && IsPredicateCall(ma.Name.Identifier.ValueText):
                     if (inv.ArgumentList is not null)
                         foreach (var a in inv.ArgumentList.Arguments)

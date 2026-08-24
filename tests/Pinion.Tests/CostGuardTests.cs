@@ -10,7 +10,7 @@ public class ModelPricingTests
     [InlineData("claude-haiku-4-5", 1, 5)]
     [InlineData("claude-sonnet-4-6", 3, 15)]
     [InlineData("claude-opus-4-8", 5, 25)]
-    [InlineData("something-unknown", 3, 15)] // conservative default
+    [InlineData("something-unknown", 3, 15)]
     public void Rates_map_by_model_family(string model, int inRate, int outRate)
     {
         var r = ModelPricing.For(model);
@@ -21,7 +21,6 @@ public class ModelPricingTests
     [Fact]
     public void Cost_is_input_plus_output_priced_per_million()
     {
-        // 1M in + 1M out on Sonnet = $3 + $15 = $18.
         var cost = ModelPricing.CostUsd("claude-sonnet-4-6", new LlmUsage(InputTokens: 1_000_000, OutputTokens: 1_000_000));
         Assert.Equal(18m, cost);
     }
@@ -51,7 +50,6 @@ public class SpendCeilingTests
         public Task<LlmResponse> CompleteAsync(LlmRequest request, CancellationToken ct)
         {
             Calls++;
-            // $18 per call on Sonnet — one call blows a $1 ceiling.
             return Task.FromResult(new LlmResponse("// code", new LlmUsage(InputTokens: 1_000_000, OutputTokens: 1_000_000)));
         }
     }
@@ -71,13 +69,12 @@ public class SpendCeilingTests
     {
         var llm = new CostlyLlm();
         var meter = new UsageMeter();
-        // Default MaxRepairAttempts=3 would allow 4 calls; the $1 ceiling must cut it to 1.
         var gen = new TestGenerator(new AlwaysFailsAdapter(), llm, options: null, log: null, meter, maxSpendUsd: 1.00m);
 
         var result = await gen.GenerateAsync(Unit(), default);
 
         Assert.False(result.Success);
-        Assert.Equal(1, llm.Calls); // stopped after the first call instead of burning 4
+        Assert.Equal(1, llm.Calls);
         Assert.True(gen.SpendCeilingReached);
         Assert.Contains(result.Diagnostics, d => d.Contains("spend ceiling"));
     }

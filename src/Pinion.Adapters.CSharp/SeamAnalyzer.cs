@@ -23,14 +23,12 @@ internal static class SeamAnalyzer
 {
     private const int MaxItems = 6;
 
-    // Non-deterministic / ambient members — using these wires in time, identity, or environment.
     private static readonly Dictionary<string, HashSet<string>> AmbientMembers = new(StringComparer.Ordinal)
     {
         ["DateTime"] = new(StringComparer.Ordinal) { "Now", "UtcNow", "Today" },
         ["DateTimeOffset"] = new(StringComparer.Ordinal) { "Now", "UtcNow" },
         ["Guid"] = new(StringComparer.Ordinal) { "NewGuid" },
         ["Stopwatch"] = new(StringComparer.Ordinal) { "GetTimestamp", "StartNew" },
-        // Machine/process-specific Environment access (NOT benign constants like NewLine/Version).
         ["Environment"] = new(StringComparer.Ordinal)
         {
             "GetEnvironmentVariable", "GetEnvironmentVariables", "ExpandEnvironmentVariables",
@@ -39,7 +37,6 @@ internal static class SeamAnalyzer
         },
     };
 
-    // External-resource types — any static call or construction is an I/O / network / DB dependency.
     private static readonly HashSet<string> ResourceTypes = new(StringComparer.Ordinal)
     {
         "File", "Directory", "FileInfo", "DirectoryInfo", "FileStream", "StreamReader", "StreamWriter",
@@ -47,7 +44,6 @@ internal static class SeamAnalyzer
         "SqlConnection", "SqlCommand", "OleDbConnection", "DbConnection", "Process", "Random",
     };
 
-    // Interfaces that are data/utility contracts, not substitutable collaborators — never count as seams.
     private static readonly HashSet<string> NonCollaboratorInterfaces = new(StringComparer.Ordinal)
     {
         "IEnumerable", "IEnumerator", "ICollection", "IList", "IReadOnlyList", "IReadOnlyCollection",
@@ -61,9 +57,6 @@ internal static class SeamAnalyzer
         var seams = new SortedSet<string>(StringComparer.Ordinal);
         var obstacles = new SortedSet<string>(StringComparer.Ordinal);
 
-        // Object seams via injection: substitutable collaborators the unit already receives. Method
-        // parameters apply to static and instance methods; constructor-injected collaborators only to
-        // instance methods (a static method can't reach them).
         foreach (var p in method.Parameters)
             if (IsSubstitutable(p.Type))
                 seams.Add(RoslynSymbols.ShortType(p.Type));
@@ -75,7 +68,6 @@ internal static class SeamAnalyzer
                         if (IsSubstitutable(p.Type))
                             seams.Add(RoslynSymbols.ShortType(p.Type));
 
-        // Obstacles: ambient access and external-resource use inside the body.
         if (body is not null)
         {
             foreach (var node in body.DescendantNodes())
@@ -94,7 +86,6 @@ internal static class SeamAnalyzer
                         AddCallObstacle(obstacles, called.ContainingType?.Name, called.Name);
                         break;
 
-                    // DateTime.Now / Environment.MachineName etc. are property reads, not invocations.
                     case MemberAccessExpressionSyntax ma
                         when model.GetSymbolInfo(ma, ct).Symbol is IPropertySymbol prop:
                         AddCallObstacle(obstacles, prop.ContainingType?.Name, prop.Name);

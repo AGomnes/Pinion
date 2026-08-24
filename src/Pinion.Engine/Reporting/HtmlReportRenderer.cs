@@ -25,7 +25,6 @@ public static class HtmlReportRenderer
 
         double coverage = report.BehaviorCoverage * 100;
         int landmines = report.LandmineCounts.Values.Sum();
-        // Prefer the true mutant-weighted score from prove; only fall back to a per-file average.
         double? mutation = overallMutation ?? AverageMutation(report, fileScores);
 
         var sb = new StringBuilder();
@@ -34,13 +33,11 @@ public static class HtmlReportRenderer
         sb.Append($"<title>Pinion — {Enc(project)}</title>\n");
         sb.Append("<style>\n").Append(Css).Append("\n</style>\n</head>\n<body>\n");
 
-        // Header
         sb.Append("<header class=\"app\">\n");
         sb.Append($"  <h1>Pinion <span class=\"muted\">behavior report</span></h1>\n");
         sb.Append($"  <p class=\"muted\">{Enc(project)} · {report.ScannedMethods:N0} methods across {report.ScannedFiles:N0} files · generated {Enc(report.GeneratedAt.ToString("yyyy-MM-dd HH:mm"))}</p>\n");
         sb.Append("</header>\n");
 
-        // Metric cards
         sb.Append("<section class=\"cards\">\n");
         if (mutation is { } m)
             Card(sb, $"{m:0}%", "mutation score", Band(m, 50, 75, invert: true));
@@ -50,7 +47,6 @@ public static class HtmlReportRenderer
         Card(sb, Effort(report.HighRiskUnprotected), "estimated lock effort", "neutral");
         sb.Append("</section>\n");
 
-        // Landmine call-out — the scariest migration signal deserves more than a chip.
         if (landmines > 0)
         {
             string summary = string.Join(", ", report.LandmineCounts.OrderByDescending(kv => kv.Value).Select(kv => $"{kv.Value} {kv.Key}"));
@@ -61,7 +57,6 @@ public static class HtmlReportRenderer
         int cols = hasScores ? 7 : 6;
         string thresholdJs = report.HighRiskThreshold.ToString("0.0###", System.Globalization.CultureInfo.InvariantCulture);
 
-        // Dashboard (Alpine)
         sb.Append("<main x-data=\"dashboard()\">\n");
         sb.Append("  <div class=\"controls\">\n");
         sb.Append("    <input type=\"search\" class=\"filter\" placeholder=\"Filter by name, file, or tag…\" x-model=\"q\" aria-label=\"Filter\">\n");
@@ -82,12 +77,10 @@ public static class HtmlReportRenderer
 
         sb.Append("    <template x-for=\"item in display\" :key=\"item.key || item.id\">\n");
         sb.Append("    <tbody class=\"row-group\">\n");
-        // File header (only in grouped mode)
         sb.Append("      <tr class=\"file-head\" x-show=\"item.isFile\" @click=\"toggleGroup(item.file)\">\n");
         sb.Append($"        <td colspan=\"{cols}\"><span class=\"twisty\" x-text=\"groupOpen[item.file] === false ? '▸' : '▾'\"></span> <code x-text=\"item.file\"></code><span class=\"muted\" x-text=\"' · ' + item.count + (item.count === 1 ? ' method' : ' methods')\"></span>");
         if (hasScores) sb.Append("<template x-if=\"item.score !== null\"><span :class=\"'score fhscore ' + scoreBand(item.score)\" x-text=\"item.score + '%'\"></span></template>");
         sb.Append("</td>\n      </tr>\n");
-        // Method row
         sb.Append("      <tr class=\"row\" x-show=\"!item.isFile\" @click=\"item.open = !item.open\" :class=\"{ open: item.open, nested: grouped }\">\n");
         sb.Append("        <td class=\"name\"><span class=\"twisty\" x-text=\"item.open ? '▾' : '▸'\"></span> <code x-text=\"item.name\"></code><span class=\"loc muted\" x-text=\"' ' + item.file + ':' + item.line\"></span></td>\n");
         sb.Append("        <td class=\"right\" x-text=\"item.cx\"></td>\n");
@@ -98,14 +91,12 @@ public static class HtmlReportRenderer
             sb.Append("        <td class=\"right\"><span x-show=\"item.score !== null\" :class=\"'score ' + scoreBand(item.score)\" x-text=\"item.score === null ? '' : item.score + '%'\"></span><span x-show=\"item.score === null\" class=\"muted\">—</span></td>\n");
         sb.Append("        <td class=\"right risk\"><span class=\"bar\"><span class=\"fill\" :class=\"riskBand(item.risk)\" :style=\"'width:' + (item.risk*10) + '%'\"></span></span><span class=\"riskval\" x-text=\"item.risk.toFixed(1)\"></span></td>\n");
         sb.Append("      </tr>\n");
-        // Drill-down row
         sb.Append($"      <tr class=\"detail\" x-show=\"!item.isFile && item.open\" x-cloak><td colspan=\"{cols}\">\n");
         sb.Append("        <div class=\"breakdown\">\n");
         sb.Append("          <div class=\"sig\"><code x-text=\"item.signature\"></code></div>\n");
         sb.Append("          <template x-for=\"c in item.components\" :key=\"c.name\">\n");
         sb.Append($"            <div class=\"comp\" x-show=\"c.contribution > 0\"><span class=\"cname\" x-text=\"c.name\"></span><span class=\"cbar\"><span class=\"cfill\" :style=\"'width:' + Math.min(100, c.contribution/{thresholdJs}*100) + '%'\"></span></span><span class=\"cdetail muted\" x-text=\"c.detail\"></span></div>\n");
         sb.Append("          </template>\n");
-        // Actionable: copy the exact command to lock an untested method.
         sb.Append("          <div class=\"action\" x-show=\"!item.tested\"><span class=\"muted\">Lock it:</span> <code class=\"cmd\" x-text=\"item.gencmd\"></code> <button class=\"copy\" @click.stop=\"copy(item.gencmd, $event)\">Copy</button></div>\n");
         sb.Append("          <div class=\"path muted\" x-text=\"item.path\"></div>\n");
         sb.Append("        </div>\n");
@@ -115,13 +106,11 @@ public static class HtmlReportRenderer
         sb.Append("  </table>\n");
         sb.Append("</main>\n");
 
-        // Footer — trust signal + auditable weights
         sb.Append("<footer class=\"muted\">\n");
         sb.Append($"  Risk = weighted sum (complexity {report.Weights.Complexity}, untested {report.Weights.NoTests}, domain {report.Weights.Domain}, blast {report.Weights.Callers}, size {report.Weights.Size}, landmine {report.Weights.Landmine}) — fully auditable.<br>\n");
         sb.Append("  This report is self-contained and offline — no data left your machine.\n");
         sb.Append("</footer>\n");
 
-        // Data + Alpine (inlined → no network request)
         sb.Append("<script>window.__PINION_ROWS__ = ").Append(rowsJson).Append(";\n");
         sb.Append(DashboardJs).Append("</script>\n");
         sb.Append("<!-- Alpine.js v3.14.8 (MIT) — vendored & inlined for offline use -->\n");
@@ -155,7 +144,6 @@ public static class HtmlReportRenderer
                 path = h.Unit.FilePath,
                 line = h.Unit.StartLine,
                 signature = h.Unit.Signature,
-                // The exact command to lock this method — turns the report from diagnosis into next step.
                 gencmd = $"pinion generate \"{report.ProjectPath}\" --target {method}",
                 cx = h.Unit.CyclomaticComplexity,
                 blast = h.Unit.CallerIds.Count,
@@ -170,14 +158,12 @@ public static class HtmlReportRenderer
                     .Select(c => new { name = c.Name, detail = c.Detail, contribution = Math.Round(c.Contribution, 2) }),
             };
         });
-        // Default options are HTML-safe (escapes <, >, & as \uXXXX) — safe to embed inside <script>.
         return JsonSerializer.Serialize(rows);
     }
 
     private static double? AverageMutation(AnalysisReport report, IReadOnlyDictionary<string, double>? fileScores)
     {
         if (fileScores is not { Count: > 0 }) return null;
-        // Methods-weighted average over files that actually have a score.
         var weighted = report.Hotspots
             .Select(h => Path.GetFileName(h.Unit.FilePath))
             .Where(fileScores.ContainsKey)
@@ -200,7 +186,6 @@ public static class HtmlReportRenderer
 
     private static string Enc(string s) => WebUtility.HtmlEncode(s);
 
-    // Read the embedded Alpine.js once, not on every Render.
     private static readonly Lazy<string> AlpineSource = new(() =>
     {
         var asm = typeof(HtmlReportRenderer).Assembly;

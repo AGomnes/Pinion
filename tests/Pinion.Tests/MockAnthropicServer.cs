@@ -69,7 +69,7 @@ internal sealed class MockAnthropicServer : IDisposable
         {
             HttpListenerContext ctx;
             try { ctx = await _listener.GetContextAsync().ConfigureAwait(false); }
-            catch { break; } // listener stopped
+            catch { break; }
 
             string reqBody;
             using (var reader = new StreamReader(ctx.Request.InputStream, ctx.Request.ContentEncoding))

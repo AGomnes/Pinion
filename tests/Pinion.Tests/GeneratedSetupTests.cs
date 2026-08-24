@@ -21,8 +21,6 @@ public class GeneratedSetupTests
 
         await gen.EmitTestAsync(unit, "public class S_M_CharacterizationTests {}", default);
 
-        // A module initializer pins invariant culture so generated golden masters are reproducible across
-        // machines/CI (a method using CurrentCulture would otherwise capture locale-specific output).
         string setup = Path.Combine(tmp.Path, "PinionCharacterization", "__PinionGeneratedSetup.cs");
         Assert.True(File.Exists(setup), "culture-pinning setup file was not written");
         string txt = await File.ReadAllTextAsync(setup);

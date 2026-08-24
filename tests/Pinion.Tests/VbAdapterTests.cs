@@ -17,7 +17,7 @@ public class VbComplexityTests
         var tpa = ((string)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES")!).Split(Path.PathSeparator);
         var refs = tpa.Where(p => p.EndsWith(".dll", StringComparison.OrdinalIgnoreCase))
             .Select(p => (MetadataReference)MetadataReference.CreateFromFile(p));
-        _ = VisualBasicCompilation.Create("T", new[] { tree }, refs); // parse is enough; no symbols needed
+        _ = VisualBasicCompilation.Create("T", new[] { tree }, refs);
         var block = tree.GetRoot().DescendantNodes().OfType<MethodBlockSyntax>()
             .First(b => b.SubOrFunctionStatement.Identifier.Text == method);
         return VbComplexity.Compute(block);
@@ -48,7 +48,6 @@ public class VbComplexityTests
                 End Function
             End Class
             """;
-        // If(1) + Case NO/UK/DE(3, Case Else excluded) + If(1) + AndAlso(1) = 6 decisions → 7.
         Assert.Equal(7, Complexity(src, "CalculateVat"));
     }
 
@@ -79,21 +78,16 @@ public class VbSourceScanTests
     [Fact]
     public async Task Source_scan_fallback_analyzes_vb_without_msbuild()
     {
-        // The test host doesn't register MSBuild, so MSBuildWorkspace.Create() fails and the adapter
-        // falls back to scanning .vb files directly — the path that makes VB analyze work on real legacy
-        // (non-SDK) projects. It must still produce correct IR (members, complexity, domain tags).
         string vbproj = Path.Combine(RepoRoot(), "samples", "LegacyVb", "LegacyVb.vbproj");
 
         var units = await new VisualBasicAdapter().AnalyzeAsync(vbproj, default);
 
         var vat = units.FirstOrDefault(u => u.DisplayName == "InvoiceService.CalculateVat");
         Assert.NotNull(vat);
-        Assert.Equal(7, vat!.CyclomaticComplexity);            // VB complexity computed from raw source
-        Assert.Contains("money", vat.DomainTags);              // name-based tagging, reused engine logic
+        Assert.Equal(7, vat!.CyclomaticComplexity);
+        Assert.Contains("money", vat.DomainTags);
         Assert.True(vat.IsPublicEntryPoint);
 
-        // Call graph (blast radius): GrossTotal calls CalculateVat, so CalculateVat has a caller and
-        // GrossTotal has CalculateVat as a callee.
         var gross = units.First(u => u.DisplayName == "InvoiceService.GrossTotal");
         Assert.Contains(vat.Id, gross.CalleeIds);
         Assert.Contains(gross.Id, vat.CallerIds);
@@ -102,12 +96,7 @@ public class VbSourceScanTests
     [Fact]
     public async Task Tested_method_is_detected_via_a_referencing_test_project()
     {
-        // A production VB project + a "Tests" project that references it and calls Add (but not Unused).
-        // The adapter must mark Add as HasTests and leave Unused untested. Built in-memory so it's
-        // deterministic (no dependence on MSBuild being registered in this run).
         var tpa = ((string)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES")!).Split(Path.PathSeparator);
-        // Exclude test-framework assemblies — the test host's TPA contains xunit/testplatform, which would
-        // otherwise make IsTestProject (correctly) classify the production project as a test project too.
         string[] testMarkers = { "xunit", "testplatform", "testhost", "mstest", "nunit" };
         var refs = tpa
             .Where(p => p.EndsWith(".dll", StringComparison.OrdinalIgnoreCase))
@@ -152,14 +141,12 @@ public class VbSourceScanTests
         Assert.True(add is not null, "no Calc.Add — units: " + dump);
         Assert.True(add!.HasTests, "Add should be tested — units: " + dump);
         Assert.False(units.First(u => u.DisplayName == "Calc.Unused").HasTests);
-        Assert.DoesNotContain(units, u => u.DisplayName == "CalcTests.AddsTwoNumbers"); // test members excluded
+        Assert.DoesNotContain(units, u => u.DisplayName == "CalcTests.AddsTwoNumbers");
     }
 }
 
 public class VbMemberGatheringTests
 {
-    // An in-memory single VB project (no MSBuild), with test-framework assemblies filtered from the refs
-    // so the production project isn't itself classified as a test project.
     private static async Task<IReadOnlyList<CodeUnit>> Analyze(string vb)
     {
         var tpa = ((string)AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES")!).Split(Path.PathSeparator);
@@ -180,9 +167,6 @@ public class VbMemberGatheringTests
     [Fact]
     public async Task Computed_property_getter_is_analyzed_but_auto_property_is_not()
     {
-        // A property Get with real branch logic carries behaviour and must appear (with its decision
-        // counted); an auto-property has no accessor body and must be skipped. This is the parity gap with
-        // the C# adapter that silently dropped VB property logic from the readiness report.
         var units = await Analyze("""
             Namespace M
                 Public Class Account
@@ -201,8 +185,8 @@ public class VbMemberGatheringTests
         string dump = "[" + string.Join(" | ", units.Select(u => u.DisplayName)) + "]";
         var status = units.FirstOrDefault(u => u.DisplayName == "Account.Status.get");
         Assert.True(status is not null, "computed property getter not analyzed — units: " + dump);
-        Assert.Equal(2, status!.CyclomaticComplexity);           // one If → 2
-        Assert.DoesNotContain(units, u => u.DisplayName.StartsWith("Account.Name")); // auto-property skipped
+        Assert.Equal(2, status!.CyclomaticComplexity);
+        Assert.DoesNotContain(units, u => u.DisplayName.StartsWith("Account.Name"));
     }
 
     [Fact]
@@ -241,7 +225,7 @@ public class VbLandmineDetectorTests
     {
         Assert.Contains("WebForms", Detect(imports: new[] { "System.Web.UI" }));
         Assert.Contains("WebForms", Detect(bases: new[] { "Page" }));
-        Assert.Contains("WebForms", Detect(file: "Default.aspx.vb")); // VB code-behind suffix
+        Assert.Contains("WebForms", Detect(file: "Default.aspx.vb"));
     }
 
     [Fact]

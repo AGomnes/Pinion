@@ -24,7 +24,6 @@ public sealed class CoverageCollector
         try
         {
             int exit = await RunDotNetTestAsync(targetPath, resultsDir, ct).ConfigureAwait(false);
-            // Some tests failing doesn't invalidate coverage data, but no data does.
             if (exit != 0)
                 _log?.Invoke($"[coverage] `dotnet test` exited {exit}; using whatever coverage was produced.");
 
@@ -44,7 +43,7 @@ public sealed class CoverageCollector
         }
         finally
         {
-            try { Directory.Delete(resultsDir, recursive: true); } catch { /* best effort */ }
+            try { Directory.Delete(resultsDir, recursive: true); } catch {  }
         }
     }
 
@@ -57,7 +56,6 @@ public sealed class CoverageCollector
         };
         _log?.Invoke($"[coverage] dotnet test {targetPath} --collect \"XPlat Code Coverage\" …");
 
-        // The whole suite can be slow; cap it generously so a hung test can't wedge the run.
         var result = await ProcessRunner.RunAsync("dotnet", args, timeout: TimeSpan.FromMinutes(10), ct: ct)
             .ConfigureAwait(false);
         if (result.TimedOut) _log?.Invoke("[coverage] dotnet test timed out and was terminated.");

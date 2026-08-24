@@ -26,7 +26,6 @@ public class DomainTaggerTests
     [Fact]
     public void Validate_is_not_mistaken_for_date()
     {
-        // "valiDATE" contains "date" as a substring — must not produce a date tag.
         Assert.DoesNotContain(DomainTag.Date, Tag("ValidateToken", "AuthHandler"));
     }
 
@@ -45,7 +44,6 @@ public class DomainTaggerTests
     [Fact]
     public void Referenced_callee_names_can_drive_a_tag()
     {
-        // A blandly named method that calls SqlCommand should still read as io.
         Assert.Contains(DomainTag.Io, Tag("Run", "Worker", refs: new[] { "SqlCommand" }));
     }
 }

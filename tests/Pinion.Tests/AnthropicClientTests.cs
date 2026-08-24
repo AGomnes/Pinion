@@ -13,7 +13,7 @@ public class AnthropicClientTests
 
         Assert.Contains("\"model\":\"claude-sonnet-4-6\"", json);
         Assert.Contains("\"max_tokens\":4096", json);
-        Assert.Contains("\"cache_control\":{\"type\":\"ephemeral\"}", json); // stable prefix is cached
+        Assert.Contains("\"cache_control\":{\"type\":\"ephemeral\"}", json);
         Assert.Contains("\"role\":\"user\"", json);
         Assert.Contains("hello", json);
     }
@@ -21,8 +21,6 @@ public class AnthropicClientTests
     [Fact]
     public void Request_json_never_carries_sampling_or_thinking_fields()
     {
-        // These 400 on Opus 4.8/4.7 and aren't needed for characterization. The request is built from
-        // a fixed field set, so they can never appear — pin that so a future edit can't regress it.
         var req = new LlmRequest("claude-opus-4-8", "SYS", new[] { LlmMessage.User("hi") }, 4096);
         string json = AnthropicClient.BuildRequestJson(req);
 
@@ -37,13 +35,12 @@ public class AnthropicClientTests
         string json = AnthropicClient.BuildRequestJson(req);
 
         Assert.DoesNotContain("cache_control", json);
-        Assert.Contains("\"system\":\"SYS\"", json); // plain string, not the cached-block form
+        Assert.Contains("\"system\":\"SYS\"", json);
     }
 
     [Fact]
     public void Parse_concatenates_text_blocks_and_reads_usage()
     {
-        // A representative Messages API response body.
         const string body = """
         {
           "id": "msg_1",
@@ -72,7 +69,7 @@ public class ModelCatalogTests
     [InlineData("claude-sonnet-4-6", true)]
     [InlineData("claude-opus-4-8", true)]
     [InlineData("claude-haiku-4-5", true)]
-    [InlineData("claude-sonnet-4.6", false)]  // common typo: dots instead of dashes
+    [InlineData("claude-sonnet-4.6", false)]
     [InlineData("gpt-4", false)]
     [InlineData("", false)]
     public void Known_ids_are_recognized_typos_are_not(string model, bool known)

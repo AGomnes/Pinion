@@ -6,7 +6,6 @@ namespace Pinion.Tests;
 
 public class LicenseGateTests
 {
-    // A throwaway issuer keypair, generated per test run — never the production key.
     private static readonly (string PublicKeyB64, string PrivateKeyB64) Issuer = LicenseAuthority.GenerateKeyPair();
 
     [Fact]
@@ -34,8 +33,6 @@ public class LicenseGateTests
     [Fact]
     public void License_bound_to_a_different_machine_is_rejected()
     {
-        // A correctly-signed license for someone else's machine must not work here — this
-        // is what stops a customer sharing their token with everyone.
         string token = LicenseAuthority.Issue("Acme Corp", "pro", 365, machine: "deadbeefdeadbeef", Issuer.PrivateKeyB64);
 
         var status = LicenseGate.VerifyWith(token, Issuer.PublicKeyB64);
@@ -96,21 +93,17 @@ public class LicenseGateTests
     [Fact]
     public void Rotation_accepts_a_token_signed_by_any_trusted_key()
     {
-        // Key rotation: while both keys are trusted, a license signed by EITHER must verify — so issuing
-        // can move to a new key without invalidating licenses already minted under the old one.
         var keyA = LicenseAuthority.GenerateKeyPair();
         var keyB = LicenseAuthority.GenerateKeyPair();
         string tokenB = LicenseAuthority.Issue("Acme Corp", "pro", 365, machine: null, keyB.PrivateKeyB64);
 
         Assert.True(LicenseGate.VerifyAgainst(tokenB, new[] { keyA.PublicKeyB64, keyB.PublicKeyB64 }).Valid);
-        Assert.False(LicenseGate.VerifyAgainst(tokenB, new[] { keyA.PublicKeyB64 }).Valid); // key B dropped → rejected
+        Assert.False(LicenseGate.VerifyAgainst(tokenB, new[] { keyA.PublicKeyB64 }).Valid);
     }
 
     [Fact]
     public void Rotation_reports_expiry_not_signature_when_a_key_matches()
     {
-        // The failure message should reflect that the token WAS ours (matched a key) but expired — not a
-        // misleading "signature mismatch" from the other trusted key.
         var keyA = LicenseAuthority.GenerateKeyPair();
         var keyB = LicenseAuthority.GenerateKeyPair();
         string expiredB = LicenseAuthority.Issue("Acme Corp", "pro", -1, machine: null, keyB.PrivateKeyB64);
@@ -124,11 +117,6 @@ public class LicenseGateTests
     [Fact]
     public void WebCrypto_minted_token_verifies_in_dotnet()
     {
-        // Cross-runtime interop guard — the load-bearing assumption of the billing backend.
-        // This token was minted by Web Crypto (Node/Deno crypto.subtle, ECDSA P-256, raw r‖s), EXACTLY as
-        // the Supabase mint function (AlexNettside/supabase/functions/_shared/license.ts) produces. If it
-        // verifies here, Deno-minted subscription licenses are accepted by the .NET product offline.
-        // (exp is ~100 years out, so it never expires; the matching public key is inline.)
         const string webCryptoToken =
             "eyJzdWIiOiJJbnRlcm9wIFRlc3QiLCJlZCI6InBybyIsImV4cCI6IjIxMjYtMDUtMTdUMTE6MDY6MDMuMzE2WiIsImlhdCI6IjIwMjYtMDYtMTBUMTE6MDY6MDMuMzE2WiIsIm1pZCI6bnVsbH0" +
             ".Yca6sS0Cch7Q_Lj8PiEvz1kERUBDjuescit8LTRfkEf2SP9iyE8ulbdKM9hJRbesojpw55Cran7CzNnWMErDRA";
@@ -149,7 +137,7 @@ public class LicenseGateTests
         var status = LicenseGate.VerifyWith(token, Issuer.PublicKeyB64);
 
         Assert.True(status.Valid);
-        Assert.InRange(status.DaysUntilExpiry!.Value, 9, 10); // ~10 days, allowing for sub-day rounding
+        Assert.InRange(status.DaysUntilExpiry!.Value, 9, 10);
     }
 
     [Fact]
@@ -161,13 +149,11 @@ public class LicenseGateTests
         {
             string good = LicenseAuthority.Issue("Acme Corp", "pro", 30, machine: null, Issuer.PrivateKeyB64);
 
-            // Valid key → installed.
             var ok = LicenseGate.Install(good, path, Issuer.PublicKeyB64);
             Assert.True(ok.Valid, ok.Reason);
             Assert.True(File.Exists(path));
             Assert.Equal(good, File.ReadAllText(path).Trim());
 
-            // Invalid key → never written (here, to a fresh path so we can assert nothing lands).
             string path2 = Path.Combine(dir, "license2");
             var bad = LicenseGate.Install("not-a-license", path2, Issuer.PublicKeyB64);
             Assert.False(bad.Valid);
@@ -175,7 +161,7 @@ public class LicenseGateTests
         }
         finally
         {
-            try { Directory.Delete(dir, recursive: true); } catch { /* ignore */ }
+            try { Directory.Delete(dir, recursive: true); } catch {  }
         }
     }
 }

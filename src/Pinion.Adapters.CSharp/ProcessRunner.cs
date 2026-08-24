@@ -32,16 +32,11 @@ internal static class ProcessRunner
         if (env is not null)
             foreach (var kv in env) psi.Environment[kv.Key] = kv.Value;
 
-        // SECURITY: a spawned child inherits this process's environment. `generate`/`verify`/`prove`
-        // launch `dotnet test`, which EXECUTES the user's (untrusted, legacy) code — so the code under
-        // characterization could otherwise read ANTHROPIC_API_KEY (and friends) out of its own process
-        // environment and exfiltrate it. The runner never needs those secrets; strip them before launch.
         ScrubSecretsFrom(psi.Environment);
 
         using var proc = new Process { StartInfo = psi };
         proc.Start();
 
-        // Reads use the caller's token only, so on a timeout they still drain to EOF once we kill.
         Task<string> stdout = proc.StandardOutput.ReadToEndAsync(ct);
         Task<string> stderr = proc.StandardError.ReadToEndAsync(ct);
 
@@ -63,7 +58,7 @@ internal static class ProcessRunner
         }
         catch (OperationCanceledException)
         {
-            TryKill(proc); // user cancelled
+            TryKill(proc);
             throw;
         }
 
@@ -79,9 +74,9 @@ internal static class ProcessRunner
     /// </summary>
     internal static readonly string[] SecretEnvVars =
     {
-        "ANTHROPIC_API_KEY",      // the key Pinion's own AI tier requires the user to set
+        "ANTHROPIC_API_KEY",
         "OPENAI_API_KEY", "AZURE_OPENAI_API_KEY", "GOOGLE_API_KEY", "GEMINI_API_KEY", "MISTRAL_API_KEY",
-        "PINION_SIGNING_KEY",     // license-minting private key (vendor tool); never needed downstream
+        "PINION_SIGNING_KEY",
     };
 
     /// <summary>Remove every <see cref="SecretEnvVars"/> entry from a child process's environment.</summary>
@@ -92,12 +87,12 @@ internal static class ProcessRunner
 
     private static void TryKill(Process proc)
     {
-        try { if (!proc.HasExited) proc.Kill(entireProcessTree: true); } catch { /* already gone */ }
+        try { if (!proc.HasExited) proc.Kill(entireProcessTree: true); } catch {  }
     }
 
     private static async Task SafeWhenAll(params Task[] tasks)
     {
-        try { await Task.WhenAll(tasks).ConfigureAwait(false); } catch { /* drained or faulted — ignore */ }
+        try { await Task.WhenAll(tasks).ConfigureAwait(false); } catch {  }
     }
 
     private static string AppendNote(Task<string> stderr, string note) =>

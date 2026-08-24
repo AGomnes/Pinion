@@ -1,4 +1,4 @@
-﻿using System.Collections.Concurrent;
+using System.Collections.Concurrent;
 using System.Globalization;
 using CsCheck;
 using Microsoft.CodeAnalysis;
@@ -25,14 +25,9 @@ internal sealed partial class CSharpDeterministicSynthesizer : IDisposable
 {
     private const int MaxCandidatesPerParam = 6;
     private const int MaxRows = 12;
-    // How many variants of a constructed parameter object to synthesise (base + field variations).
     private const int MaxObjectVariants = 8;
-    // Deterministic joint-random sample rows added for numeric-input methods (property-based tier).
     private const int MaxSampleRows = 16;
-    // Per-test cap so one hanging/infinite-loop method fails just its own test, not the whole batch.
     private const int PerTestTimeoutMs = 30000;
-    // Delimiter for row de-dup keys — a char that can't appear in a C# source literal, so distinct rows
-    // like ["1","23"] and ["12","3"] don't collide on concatenation and silently drop a row.
     private const string RowKeySep = "\u0001";
 
     private static readonly SymbolDisplayFormat FullyQualified = SymbolDisplayFormat.FullyQualifiedFormat;
@@ -51,11 +46,8 @@ internal sealed partial class CSharpDeterministicSynthesizer : IDisposable
     private readonly Action<string>? _log;
     private readonly bool _tryMsBuild;
     private readonly ConcurrentDictionary<string, Solution> _solutions = new(StringComparer.OrdinalIgnoreCase);
-    private readonly List<Workspace> _workspaces = new(); // MSBuild + source-scan workspaces, disposed on Dispose
+    private readonly List<Workspace> _workspaces = new();
 
-    // Stubs the CURRENT Emit needs: interface FQN → (stub class name, the interface). Reset per Emit
-    // (synthesis is sequential within a batch). A method that injects a service interface gets a real
-    // `new __Stub()` collaborator instead of a null that NREs on first use.
     private readonly Dictionary<string, (string Name, INamedTypeSymbol Iface)> _stubs = new(StringComparer.Ordinal);
 
     public CSharpDeterministicSynthesizer(Action<string>? log = null, bool tryMsBuild = false)
@@ -72,10 +64,8 @@ internal sealed partial class CSharpDeterministicSynthesizer : IDisposable
         _solutions.Clear();
     }
 
-    // BaseMethodDeclarationSyntax covers methods AND constructors/operators — both carry Body/ExpressionBody.
     private sealed record Resolved(IMethodSymbol Method, BaseMethodDeclarationSyntax Decl, SemanticModel Model);
 
-    // Internal (not private): the VB synthesis path (VbSynthesis) mines the same constants from VB syntax.
     internal sealed class Mined
     {
         public SortedSet<string> Strings { get; } = new(StringComparer.Ordinal);
@@ -94,15 +84,12 @@ internal sealed partial class CSharpDeterministicSynthesizer : IDisposable
 
     public async Task<string> SynthesizeAsync(CodeUnit unit, string sourceRoot, CancellationToken ct)
     {
-        // VB targets: resolve + mine from VB syntax, then EMIT A C# TEST — C# calls VB assemblies
-        // natively, so the golden-master machinery is shared. The emitter is symbol-driven either way.
         if (unit.FilePath.EndsWith(".vb", StringComparison.OrdinalIgnoreCase))
         {
             var vbSolution = await GetVbSolutionAsync(sourceRoot, ct).ConfigureAwait(false);
             var vb = await VbSynthesis.ResolveAsync(vbSolution, unit, ct).ConfigureAwait(false)
                 ?? throw new InvalidOperationException($"Could not resolve a symbol for {unit.DisplayName} (deterministic synthesis needs the source).");
             GuardSupported(unit, vb.Method);
-            // No C# body → the string-guard solver is skipped; mined VB constants still drive inputs.
             return Emit(unit, vb.Method, methodBody: null, VbSynthesis.MineConstants(vb.Body, vb.Model, ct));
         }
 
@@ -121,7 +108,6 @@ internal sealed partial class CSharpDeterministicSynthesizer : IDisposable
         if (method.IsGenericMethod || method.ContainingType.IsGenericType)
             throw new NotSupportedException("generic methods/types aren't supported by the deterministic generator yet — try --provider anthropic.");
 
-        // A test in a separate assembly can only call public members of public types.
         if (method.DeclaredAccessibility != Accessibility.Public)
             throw new NotSupportedException($"method is not public ({unit.DisplayName} is {method.DeclaredAccessibility.ToString().ToLowerInvariant()}).");
         if (method.ContainingType.DeclaredAccessibility != Accessibility.Public)
@@ -156,7 +142,6 @@ internal sealed partial class CSharpDeterministicSynthesizer : IDisposable
     /// </summary>
     private async Task<Solution> LoadWithReferencesAsync(string sourceRoot)
     {
-        // Only attempt MSBuild when the host has registered it (the CLI does; test hosts don't).
         if (_tryMsBuild)
         try
         {
@@ -179,7 +164,7 @@ internal sealed partial class CSharpDeterministicSynthesizer : IDisposable
         }
 
         var scanned = SourceScanLoader.Load(sourceRoot, _log);
-        _workspaces.Add(scanned.Workspace); // AdhocWorkspace — track so Dispose tears it down
+        _workspaces.Add(scanned.Workspace);
         return scanned;
     }
 
@@ -195,7 +180,6 @@ internal sealed partial class CSharpDeterministicSynthesizer : IDisposable
             var root = await doc.GetSyntaxRootAsync(ct).ConfigureAwait(false);
             if (model is null || root is null) continue;
 
-            // Methods AND constructors (ConstructorDeclarationSyntax) — both are BaseMethodDeclarationSyntax.
             foreach (var decl in root.DescendantNodes().OfType<BaseMethodDeclarationSyntax>())
             {
                 if (decl.GetLocation().GetLineSpan().StartLinePosition.Line + 1 == unit.StartLine
@@ -251,16 +235,16 @@ internal sealed partial class CSharpDeterministicSynthesizer : IDisposable
                 case BinaryExpressionSyntax be when IsComparison(be.Kind()):
                     Take(be.Left); Take(be.Right);
                     break;
-                case CaseSwitchLabelSyntax label:       // case "NO":
+                case CaseSwitchLabelSyntax label:
                     Take(label.Value);
                     break;
-                case ConstantPatternSyntax cp:          // is "NO", case 0 =>
+                case ConstantPatternSyntax cp:
                     Take(cp.Expression);
                     break;
-                case RelationalPatternSyntax rp:        // > 10000
+                case RelationalPatternSyntax rp:
                     Take(rp.Expression);
                     break;
-                case InvocationExpressionSyntax inv      // s.StartsWith("CLEARANCE"), coupon.Contains("SAVE")
+                case InvocationExpressionSyntax inv
                     when inv.Expression is MemberAccessExpressionSyntax ma && IsPredicateCall(ma.Name.Identifier.ValueText):
                     foreach (var a in inv.ArgumentList.Arguments) Take(a.Expression);
                     break;
@@ -269,7 +253,6 @@ internal sealed partial class CSharpDeterministicSynthesizer : IDisposable
         return mined;
     }
 
-    // Calls whose string argument gates behaviour — mine those literals so inputs can satisfy the guard.
     private static bool IsPredicateCall(string name) => name is
         "StartsWith" or "EndsWith" or "Contains" or "Equals" or "IndexOf" or "IsMatch" or "Match";
 
@@ -283,40 +266,26 @@ internal sealed partial class CSharpDeterministicSynthesizer : IDisposable
     /// the emitted C# test calls the VB assembly directly.</summary>
     private string Emit(CodeUnit unit, IMethodSymbol method, SyntaxNode? methodBody, Mined mined)
     {
-        _stubs.Clear(); // stubs are per-test; populated as args/receiver are built below
+        _stubs.Clear();
         string type = Fq(method.ContainingType);
         string methodName = method.Name;
         bool isStatic = method.IsStatic;
-        // A constructor IS the unit under test: `new T(args)` is the call, the constructed object is the
-        // captured outcome (Verify serializes its public state), and there's no receiver to build.
         bool isCtor = method.MethodKind == MethodKind.Constructor;
         var ret = isCtor ? new ReturnShape(IsAsync: false, IsVoidLike: false, IsRefLike: false) : EffectiveReturn(method);
         string testMethodName = isCtor ? "Constructor" : SafeId(methodName);
 
-        // Include a short id hash so overloads (same DisplayName) don't collide on class name. Shared with
-        // `verify --since`, which recomputes this name to find the tests covering a changed method.
         string className = Pinion.Engine.Reporting.CharacterizationNaming.TestClassName(unit.DisplayName, unit.Id);
 
-        // out params carry no input value; others vary across their candidates. A top-level string
-        // parameter is routed through the guard solver, which spans each guard's boundary (conjunctions
-        // the constant-miner can't satisfy); everything else uses the constant-driven generator.
         var perParam = method.Parameters
             .Select(p => p.RefKind == RefKind.Out ? new List<string> { "out _" }
                        : p.Type.SpecialType == SpecialType.System_String ? StringCandidates(p, methodBody, mined)
                        : Candidates(p.Type, mined))
             .ToList();
         var rows = BuildRows(perParam);
-        // Property-based tier: for methods with numeric inputs, add deterministic joint-random rows.
-        // One-hot rows hold the other params at a fixed base, which can be degenerate (isExempt=true,
-        // daysLate=-1) and starve whole code paths; joint sampling sets every param at once.
         AppendSampleRows(rows, method, mined, unit.Id, perParam);
 
         var sb = new System.Text.StringBuilder();
-        // Make the generated file self-consistent regardless of the host project's nullable setting:
-        //  - `enable annotations` keeps our own `object?` casts legal even when the host is <Nullable>disable</Nullable> (else CS8632).
-        //  - `disable warnings` lets a `null`/`default` edge-input candidate compile under <Nullable>enable</Nullable> +
-        //    warnings-as-errors (else CS8625/CS8600/CS8604 would error and silently drop the target).
-        sb.AppendLine(Pinion.Engine.Reporting.CharacterizationFormat.Stamp); // format version — `verify` checks it
+        sb.AppendLine(Pinion.Engine.Reporting.CharacterizationFormat.Stamp);
         sb.AppendLine("#nullable enable annotations");
         sb.AppendLine("#nullable disable warnings");
         sb.AppendLine("using System;");
@@ -347,12 +316,10 @@ internal sealed partial class CSharpDeterministicSynthesizer : IDisposable
             if (ret.IsAsync) invoke = "await " + invoke;
             string desc = Escape("(" + string.Join(", ", call.Display) + ")");
 
-            // Capture the return value AND the final value of every out/ref parameter — that's
-            // where the behaviour of TryX/accumulator methods actually lives.
             string captures = string.Concat(call.Captures.Select(c => $", {c.Field} = (object?)({c.Var})"));
 
             sb.AppendLine("        {");
-            foreach (var d in call.Pre) sb.AppendLine($"            {d}"); // declared before try so the catch can read them
+            foreach (var d in call.Pre) sb.AppendLine($"            {d}");
             sb.AppendLine("            try");
             sb.AppendLine("            {");
             if (ret.IsVoidLike)
@@ -362,7 +329,6 @@ internal sealed partial class CSharpDeterministicSynthesizer : IDisposable
             }
             else
             {
-                // Ref-struct results (e.g. Span<T>) can't be boxed — record their text form.
                 string captured = ret.IsRefLike ? "result.ToString()" : "result";
                 sb.AppendLine($"                var result = {invoke};");
                 sb.AppendLine($"                entries.Add(new {{ Input = \"{desc}\", Outcome = (object?)({captured}){captures} }});");
@@ -376,17 +342,11 @@ internal sealed partial class CSharpDeterministicSynthesizer : IDisposable
             sb.AppendLine();
         }
 
-        // A captured Outcome may be a result-monad / wrapper whose property getters throw (e.g.
-        // ParseResult<T>.Value throws on a failed parse). The per-row try/catch guards the CALL, but
-        // Verify then serializes the object graph and a throwing getter would blow up the whole
-        // snapshot ("snapshot not captured"). Tell Verify to skip members that throw so the rest of
-        // the real state is still recorded.
         sb.AppendLine("        var settings = new VerifySettings();");
         sb.AppendLine("        settings.IgnoreMembersThatThrow<Exception>();");
         sb.AppendLine("        await Verify(entries, settings);");
         sb.AppendLine("    }");
 
-        // Minimal nested stub classes for any interface dependency we filled with `new __Stub()`.
         foreach (var (name, iface) in _stubs.Values.OrderBy(s => s.Name, StringComparer.Ordinal))
         {
             sb.AppendLine();
@@ -425,13 +385,12 @@ internal sealed partial class CSharpDeterministicSynthesizer : IDisposable
                     break;
                 case RefKind.Ref:
                     string rv = $"__r{i}";
-                    // Explicit type, not `var` — a candidate of `null`/`default` can't infer a type (CS0815).
                     pre.Add($"{Fq(p.Type)} {rv} = {row[i]};");
                     args.Add($"ref {rv}");
                     display.Add(row[i]);
                     captures.Add((CaptureField(p.Name), rv));
                     break;
-                default: // None / In (an `in` argument can be passed by value)
+                default:
                     args.Add(row[i]);
                     display.Add(row[i]);
                     break;

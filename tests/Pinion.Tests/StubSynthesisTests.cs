@@ -19,13 +19,10 @@ public class StubSynthesisTests
     [Fact]
     public void Interface_inheriting_an_unresolved_interface_is_not_stubbed()
     {
-        // IRepo : Ext.IRepoBase where the base lives in a package that didn't restore on a source scan →
-        // its members are invisible, so a generated stub would be incomplete and fail to compile (CS0535).
-        // CanStub must decline, so the synthesizer falls back to default! rather than a broken stub.
         var iface = Interface(
             "namespace N { public interface IRepo : Ext.IRepoBase { int Compute(); } }", "N.IRepo");
 
-        Assert.Contains(iface.AllInterfaces, i => i.TypeKind == TypeKind.Error); // base unresolved (sanity)
+        Assert.Contains(iface.AllInterfaces, i => i.TypeKind == TypeKind.Error);
         Assert.False(CSharpDeterministicSynthesizer.CanStub(iface));
     }
 

@@ -26,8 +26,6 @@ public sealed class AnthropicClient : ILlmClient, IDisposable
         WriteIndented = false,
     };
 
-    // Transient failures worth retrying: rate limit, gateway/overload, server errors. A 4xx other than
-    // 429 is the caller's fault and is not retried.
     private static readonly int[] RetryableStatuses = { 429, 500, 502, 503, 529 };
 
     private readonly HttpClient _http;
@@ -94,8 +92,6 @@ public sealed class AnthropicClient : ILlmClient, IDisposable
                 return Parse(responseBody);
 
             int status = (int)resp.StatusCode;
-            // Retry transient failures (rate limit, overload, gateway/5xx) with backoff, honoring
-            // Retry-After. A single 429 used to abort the whole batch; now it backs off and retries.
             if (attempt < MaxRetries && Array.IndexOf(RetryableStatuses, status) >= 0)
             {
                 await Task.Delay(RetryDelay(resp, attempt), ct).ConfigureAwait(false);

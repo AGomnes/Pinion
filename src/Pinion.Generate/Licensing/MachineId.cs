@@ -41,7 +41,7 @@ public static class MachineId
         }
         catch
         {
-            return null; // enumeration unavailable — fall back to name+arch only
+            return null;
         }
     }
 }

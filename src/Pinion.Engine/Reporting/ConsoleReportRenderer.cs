@@ -44,9 +44,7 @@ public static class ConsoleReportRenderer
             foreach (var s in top)
             {
                 string name = s.Unit.DisplayName + "()";
-                // Pad the name column for readability; let long names overflow gracefully.
                 string left = $"{i,2}. {name}";
-                // Flag the actionable case: a risky unit that needs a seam introduced before it can be locked.
                 string seam = s.Unit.Seamability == Seamability.NeedsSeam && s.Unit.SeamBlockers.Count > 0
                     ? "  ⚠ needs seam: " + string.Join(", ", s.Unit.SeamBlockers.Take(2))
                     : "";

@@ -28,8 +28,6 @@ internal static class ReportText
             .Select(c => c.Detail)
             .ToList();
 
-        // Guarantee the test status is present even when it didn't "contribute"
-        // (i.e. the unit has tests, so the untested component is zero).
         var untested = score.Components.FirstOrDefault(c => c.Name == "untested");
         if (untested is { Contribution: 0 } && !contributing.Contains(untested.Detail))
             contributing.Add(untested.Detail);

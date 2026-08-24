@@ -30,9 +30,9 @@ internal static class CSharpSyntaxFacts
     {
         IEnumerable<AttributeListSyntax> lists = member switch
         {
-            MemberDeclarationSyntax md => md.AttributeLists,          // method/ctor/operator/property/indexer
-            AccessorDeclarationSyntax a => a.AttributeLists,          // get/set/init/add/remove
-            LocalFunctionStatementSyntax lf => lf.AttributeLists,     // local function
+            MemberDeclarationSyntax md => md.AttributeLists,
+            AccessorDeclarationSyntax a => a.AttributeLists,
+            LocalFunctionStatementSyntax lf => lf.AttributeLists,
             _ => Enumerable.Empty<AttributeListSyntax>(),
         };
         if (type is not null) lists = lists.Concat(type.AttributeLists);

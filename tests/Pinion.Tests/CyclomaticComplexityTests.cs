@@ -31,7 +31,6 @@ public class CyclomaticComplexityTests
     [Fact]
     public void Logical_operators_each_add_a_path()
     {
-        // base 1 + if 1 + && 1 + || 1 = 4
         Assert.Equal(4, ComplexityOf("bool M(bool a, bool b, bool c) { if (a && b || c) return true; return false; }"));
     }
 
@@ -48,21 +47,18 @@ public class CyclomaticComplexityTests
                 }
                 return x > 0 ? 1 : 0;                 // +1 (ternary)
             }";
-        // base 1 + 4 = 5
         Assert.Equal(5, ComplexityOf(src));
     }
 
     [Fact]
     public void Coalesce_and_coalesce_assignment_each_add_a_path()
     {
-        // base 1 + ?? 1 + ??= 1 = 3
         Assert.Equal(3, ComplexityOf("string M(string a, string b) { var x = a ?? b; x ??= b; return x; }"));
     }
 
     [Fact]
     public void Pattern_and_or_combinators_each_add_a_path()
     {
-        // base 1 + if 1 + `and` 1 = 3 ; the relational sub-patterns themselves are not extra decisions
         Assert.Equal(3, ComplexityOf("bool M(int x) { if (x is > 0 and < 10) return true; return false; }"));
     }
 
@@ -79,20 +75,18 @@ public class CyclomaticComplexityTests
                 }
                 catch (System.Exception) when (o != null) { return -1; }  // catch +1, when +1
             }";
-        // base 1 + case 1 + case-when 1 + catch 1 + catch-when 1 = 5
         Assert.Equal(5, ComplexityOf(src));
     }
 
     [Fact]
     public void Nested_local_function_decisions_are_not_counted_in_the_parent()
     {
-        // The local function is its own unit; its `if` must not inflate the method that declares it.
         const string src = @"
             int M(int x) {
                 if (x > 0) return 1;                                  // +1 (parent)
                 int Helper(int y) { if (y > 5) return 2; return 3; }  // excluded from the parent
                 return Helper(x);
             }";
-        Assert.Equal(2, ComplexityOf(src)); // base 1 + parent-if 1 only
+        Assert.Equal(2, ComplexityOf(src));
     }
 }

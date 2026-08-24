@@ -43,8 +43,8 @@ public class SeamAnalyzerTests
             """;
         var (seams, obstacles) = Analyze(src, "Year");
 
-        Assert.Contains("IClock", seams);            // substitutable collaborator → seam available
-        Assert.Empty(obstacles);                      // using the injected clock is NOT a hard dependency
+        Assert.Contains("IClock", seams);
+        Assert.Empty(obstacles);
     }
 
     [Fact]
@@ -73,9 +73,9 @@ public class SeamAnalyzerTests
             """;
         var (seams, obstacles) = Analyze(src, "Write");
 
-        Assert.Contains("DateTime.Now", obstacles);  // non-deterministic ambient read
-        Assert.Contains("File", obstacles);          // external resource
-        Assert.Empty(seams);                          // nothing to substitute → a seam must be introduced
+        Assert.Contains("DateTime.Now", obstacles);
+        Assert.Contains("File", obstacles);
+        Assert.Empty(seams);
     }
 
     [Fact]
@@ -90,7 +90,7 @@ public class SeamAnalyzerTests
             """;
         var (seams, obstacles) = Analyze(src, "Sum");
 
-        Assert.DoesNotContain("IEnumerable<int>", seams); // data contract, not a collaborator
+        Assert.DoesNotContain("IEnumerable<int>", seams);
         Assert.Empty(obstacles);
     }
 
@@ -109,15 +109,12 @@ public class SeamAnalyzerTests
         Assert.Equal(Seamability.Pure, Unit().Seamability);
         Assert.Equal(Seamability.SeamAvailable, Unit(seams: new[] { "IClock" }).Seamability);
         Assert.Equal(Seamability.NeedsSeam, Unit(obstacles: new[] { "DateTime.Now" }).Seamability);
-        // A seam present anywhere means it's wrappable, even alongside an obstacle.
         Assert.Equal(Seamability.SeamAvailable, Unit(seams: new[] { "IClock" }, obstacles: new[] { "File" }).Seamability);
     }
 
     [Fact]
     public void Report_counts_high_risk_units_that_need_a_seam()
     {
-        // A high-risk, untested unit that hard-wires a dependency (no seam) should be counted; a
-        // high-risk unit with an available seam should not.
         var needsSeam = Unit(obstacles: new[] { "DateTime.Now" }, complexity: 25, displayName: "A.Risky");
         var hasSeam = Unit(seams: new[] { "IClock" }, complexity: 25, displayName: "B.Wrappable");
 

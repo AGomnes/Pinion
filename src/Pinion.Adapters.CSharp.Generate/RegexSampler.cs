@@ -13,18 +13,18 @@ namespace Pinion.Adapters.CSharp.Generate;
 /// </summary>
 internal static class RegexSampler
 {
-    private const int MaxRepeat = 64;     // cap a `{n}` / `+` expansion so a huge count can't blow up the literal
+    private const int MaxRepeat = 64;
     private const int MaxLength = 512;
 
     public static string? GenerateMatch(string pattern)
     {
         try
         {
-            _ = new Regex(pattern); // reject patterns that don't even compile
+            _ = new Regex(pattern);
             int pos = 0;
             string? sample = ParseAlternation(pattern, ref pos);
             if (sample is null || pos != pattern.Length || sample.Length > MaxLength) return null;
-            return Regex.IsMatch(sample, pattern) ? sample : null; // the safety net
+            return Regex.IsMatch(sample, pattern) ? sample : null;
         }
         catch
         {
@@ -43,10 +43,9 @@ internal static class RegexSampler
 
     private static bool SafeIsMatch(string pattern, string input)
     {
-        try { return Regex.IsMatch(input, pattern); } catch { return true; } // treat errors as "matches" → skip it
+        try { return Regex.IsMatch(input, pattern); } catch { return true; }
     }
 
-    // alternation : sequence ('|' sequence)*  — we take the first branch but must parse the rest to advance.
     private static string? ParseAlternation(string p, ref int i)
     {
         string? first = ParseSequence(p, ref i);
@@ -54,12 +53,11 @@ internal static class RegexSampler
         while (i < p.Length && p[i] == '|')
         {
             i++;
-            if (ParseSequence(p, ref i) is null) return null; // parse-and-discard
+            if (ParseSequence(p, ref i) is null) return null;
         }
         return first;
     }
 
-    // sequence : (atom quantifier?)*  — stops at '|' or ')' or end.
     private static string? ParseSequence(string p, ref int i)
     {
         var sb = new StringBuilder();
@@ -69,7 +67,7 @@ internal static class RegexSampler
             string? atom = ParseAtom(p, ref i);
             if (atom is null) return null;
             sb.Append(ApplyQuantifier(p, ref i, atom));
-            if (i == start) return null; // no progress → give up rather than loop
+            if (i == start) return null;
             if (sb.Length > MaxLength) return null;
         }
         return sb.ToString();
@@ -83,14 +81,13 @@ internal static class RegexSampler
             case '^':
             case '$':
                 i++;
-                return ""; // anchors are zero-width
+                return "";
 
             case '(':
             {
                 i++;
                 if (i < p.Length && p[i] == '?')
                 {
-                    // (?:…) non-capturing is fine; (?<name>…) named is fine; lookarounds/conditionals/flags are not.
                     if (i + 1 < p.Length && p[i + 1] == ':') i += 2;
                     else if (i + 1 < p.Length && p[i + 1] == '<' && i + 2 < p.Length && p[i + 2] is not ('=' or '!'))
                     {
@@ -102,7 +99,7 @@ internal static class RegexSampler
                 }
                 string? inner = ParseAlternation(p, ref i);
                 if (inner is null || i >= p.Length || p[i] != ')') return null;
-                i++; // consume ')'
+                i++;
                 return inner;
             }
 
@@ -131,9 +128,9 @@ internal static class RegexSampler
         int count;
         switch (p[i])
         {
-            case '*': i++; count = 1; break; // 0+ → emit one for a meaningful sample
-            case '+': i++; count = 1; break; // 1+
-            case '?': i++; count = 1; break; // 0/1 → include it
+            case '*': i++; count = 1; break;
+            case '+': i++; count = 1; break;
+            case '?': i++; count = 1; break;
             case '{':
             {
                 int close = p.IndexOf('}', i);
@@ -146,14 +143,14 @@ internal static class RegexSampler
             default:
                 return atom;
         }
-        if (i < p.Length && p[i] == '?') i++; // lazy marker after a quantifier (+?, *?, {n,m}?)
+        if (i < p.Length && p[i] == '?') i++;
         count = Math.Clamp(count, 0, MaxRepeat);
         return count == 1 ? atom : string.Concat(Enumerable.Repeat(atom, count));
     }
 
     private static string? ParseCharClass(string p, ref int i)
     {
-        i++; // consume '['
+        i++;
         bool negated = i < p.Length && p[i] == '^';
         if (negated) i++;
 
@@ -173,7 +170,7 @@ internal static class RegexSampler
 
             if (i + 1 < p.Length && p[i] == '-' && p[i + 1] != ']')
             {
-                i++; // consume '-'
+                i++;
                 char hi;
                 if (p[i] == '\\') { char? e = ParseEscapeChar(p, ref i); if (e is null) return null; hi = e.Value; }
                 else { hi = p[i]; i++; }
@@ -181,8 +178,8 @@ internal static class RegexSampler
             }
             else chars.Add(lo);
         }
-        if (i >= p.Length) return null; // unterminated
-        i++; // consume ']'
+        if (i >= p.Length) return null;
+        i++;
 
         if (!negated)
         {
@@ -191,17 +188,15 @@ internal static class RegexSampler
             return null;
         }
 
-        // Negated: find a printable char that's in none of the listed members.
-        foreach (char cand in "Aa0 _-.xyz1") // a small, varied catalog
+        foreach (char cand in "Aa0 _-.xyz1")
             if (!chars.Contains(cand) && !ranges.Any(r => cand >= r.Lo && cand <= r.Hi))
                 return cand.ToString();
         return null;
     }
 
-    // A representative single character for an escape, or null for zero-width / unsupported escapes.
     private static char? ParseEscapeChar(string p, ref int i)
     {
-        i++; // consume '\'
+        i++;
         if (i >= p.Length) return null;
         char e = p[i];
         i++;
@@ -216,8 +211,8 @@ internal static class RegexSampler
             't' => '\t',
             'n' => '\n',
             'r' => '\r',
-            'b' or 'B' or 'A' or 'Z' or 'z' or 'G' => null, // word/string boundaries — zero-width, bail
-            _ => e, // an escaped literal: \. \\ \+ \* \( \) \[ \] \{ \} \^ \$ \| \/ \- …
+            'b' or 'B' or 'A' or 'Z' or 'z' or 'G' => null,
+            _ => e,
         };
     }
 }

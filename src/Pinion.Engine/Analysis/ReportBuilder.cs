@@ -6,9 +6,6 @@ namespace Pinion.Engine.Analysis;
 public sealed record ReportOptions(
     RiskWeights Weights,
     RiskNormalization Normalization,
-    // Tuned for the Milestone-1 signal set (complexity + untested + size, max ~5.5).
-    // As Milestone 2 lights up domain/blast-radius/landmine, scores climb and this
-    // should be revisited; it is overridable via `--threshold`.
     double HighRiskThreshold = 3.5,
     int TopHotspots = 0)
 {
@@ -44,13 +41,9 @@ public static class ReportBuilder
 
         int tested = units.Count(u => u.HasTests);
 
-        // Compare on the unrounded total (RawTotal) so a unit sitting exactly on a rounding boundary
-        // isn't included/excluded by display rounding alone.
         int highRiskUnprotected = scored.Count(s =>
             !s.Unit.HasTests && s.Score.RawTotal >= options.HighRiskThreshold);
 
-        // Of the high-risk, unprotected units, how many hard-wire their dependencies and so need a
-        // seam introduced before they can be locked — the testability friction in the migration.
         int seamsToIntroduce = scored.Count(s =>
             !s.Unit.HasTests && s.Score.RawTotal >= options.HighRiskThreshold
             && s.Unit.Seamability == Seamability.NeedsSeam);

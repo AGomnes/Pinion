@@ -50,11 +50,9 @@ public class EndToEndGenerationTests
         string testProject = Path.Combine(sampleRoot, "tests", "LegacyShop.Tests", "LegacyShop.Tests.csproj");
         string outDir = Path.Combine(Path.GetDirectoryName(testProject)!, "PinionCharacterization");
 
-        // Two real-world shapes the dogfood surfaced, in one batch (a single build/run cycle).
-        var render = UnitAt(hardCases, "Formatter.Render", "Render"); // private ctor → static-factory receiver
-        var wrap = UnitAt(hardCases, "HardCases.Wrap", "Wrap");       // returns ResultBox (throwing Value getter)
+        var render = UnitAt(hardCases, "Formatter.Render", "Render");
+        var wrap = UnitAt(hardCases, "HardCases.Wrap", "Wrap");
 
-        // Start from a clean slate so we assert freshly captured snapshots, not stale ones.
         if (Directory.Exists(outDir)) Directory.Delete(outDir, recursive: true);
         try
         {
@@ -62,18 +60,12 @@ public class EndToEndGenerationTests
             gen.ConfigureGeneration(testProject);
             var results = await gen.GenerateDeterministicBatchAsync(new[] { render, wrap }, sampleRoot, default);
 
-            // 1. Static-factory receiver: Formatter is obtained via Formatter.Default, so Render runs on a
-            //    real instance and records its "#"-prefixed output — not a NullReferenceException.
             var r = results.Single(x => x.Unit.Id == render.Id);
             Assert.True(r.Success, "Render did not characterize: " + string.Join(" | ", r.Diagnostics));
             string renderSnap = await File.ReadAllTextAsync(r.SnapshotPath!);
             Assert.Contains("#", renderSnap);
             Assert.DoesNotContain("NullReferenceException", renderSnap);
 
-            // 2. Throwing getter: the n=-1 input makes ResultBox.Value throw. The snapshot must still be
-            //    captured (Success:false recorded) — which only works because the generated test tells
-            //    Verify to ignore members that throw. Without that, the whole snapshot fails to capture
-            //    and r.Success would be false.
             var w = results.Single(x => x.Unit.Id == wrap.Id);
             Assert.True(w.Success, "Wrap did not characterize: " + string.Join(" | ", w.Diagnostics));
             string wrapSnap = await File.ReadAllTextAsync(w.SnapshotPath!);
@@ -93,10 +85,6 @@ public class EndToEndGenerationTests
         string testProject = Path.Combine(sampleRoot, "tests", "LegacyShop.Tests", "LegacyShop.Tests.csproj");
         string outDir = Path.Combine(Path.GetDirectoryName(testProject)!, "PinionCharacterization");
 
-        // On real domain models constructors are the dominant high-risk unit, but the synthesizer used to
-        // only resolve MethodDeclarationSyntax — so `new Made(...)` could never be locked. It must now
-        // characterize the constructor: capture the constructed object for a valid input and the guard
-        // exception for a bad one. (Found dogfooding eShopOnWeb, where 8 of the top 15 units were ctors.)
         var ctor = UnitAt(hardCases, "Made.ctor", "Made");
 
         if (Directory.Exists(outDir)) Directory.Delete(outDir, recursive: true);
@@ -109,8 +97,8 @@ public class EndToEndGenerationTests
             var r = results.Single();
             Assert.True(r.Success, "constructor did not characterize: " + string.Join(" | ", r.Diagnostics));
             string snap = await File.ReadAllTextAsync(r.SnapshotPath!);
-            Assert.Contains("Label", snap);             // constructed object's public state captured
-            Assert.Contains("ArgumentException", snap); // the guard on bad input captured too
+            Assert.Contains("Label", snap);
+            Assert.Contains("ArgumentException", snap);
         }
         finally
         {
@@ -126,9 +114,6 @@ public class EndToEndGenerationTests
         string testProject = Path.Combine(sampleRoot, "tests", "LegacyShop.Tests", "LegacyShop.Tests.csproj");
         string outDir = Path.Combine(Path.GetDirectoryName(testProject)!, "PinionCharacterization");
 
-        // TicksNow returns DateTime.Now.Ticks — its captured value differs between the capture run and the
-        // confirm run, so it must NOT be locked. The pipeline should detect the flake on the confirm run and
-        // quarantine it (drop the test + snapshot) with a diagnosis that names the ambient dependency.
         var ticks = UnitAt(hardCases, "HardCases.TicksNow", "TicksNow") with { SeamObstacles = new[] { "DateTime.Now" } };
 
         if (Directory.Exists(outDir)) Directory.Delete(outDir, recursive: true);
@@ -142,8 +127,7 @@ public class EndToEndGenerationTests
             Assert.False(r.Success, "a non-deterministic method must not be reported as locked");
             string diag = string.Join(" | ", r.Diagnostics);
             Assert.Contains("non-deterministic", diag, StringComparison.OrdinalIgnoreCase);
-            Assert.Contains("DateTime.Now", diag); // names the cause from the seam analysis
-            // Quarantined: no flaky golden master left behind to fail future verifies.
+            Assert.Contains("DateTime.Now", diag);
             Assert.Empty(Directory.GetFiles(outDir, "*TicksNow*.verified.*"));
         }
         finally
@@ -160,10 +144,6 @@ public class EndToEndGenerationTests
         string testProject = Path.Combine(sampleRoot, "tests", "LegacyShop.Tests", "LegacyShop.Tests.csproj");
         string outDir = Path.Combine(Path.GetDirectoryName(testProject)!, "PinionCharacterization");
 
-        // Five shapes that each used to emit a characterization test that did NOT compile (so the target
-        // was silently dropped): float params, a mined string with a newline, a non-finite double constant,
-        // a ref-string with a null candidate, and a parameter type with a `required` member. All must now
-        // compile, run, and capture a golden master in a single batch build/run.
         var units = new[]
         {
             UnitAt(hardCases, "HardCases.Scale", "Scale"),

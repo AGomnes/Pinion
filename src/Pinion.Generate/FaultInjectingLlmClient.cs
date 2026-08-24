@@ -26,8 +26,6 @@ public sealed class FaultInjectingLlmClient : ILlmClient
 
         if (call <= _failFirst)
         {
-            // Appending an obviously-invalid type guarantees an `error CS` on the first build,
-            // which the orchestrator must feed back and recover from.
             string broken = response.Text + "\n\nclass __PinionInjectedFault { int broken = ; }\n";
             return response with { Text = broken };
         }

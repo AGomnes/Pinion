@@ -18,8 +18,8 @@ public class FlakyDiagnosisTests
         string msg = FlakyDiagnosis.Explain(Unit(new[] { "DateTime.Now" }));
 
         Assert.Contains("non-deterministic", msg, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("DateTime.Now", msg);   // points straight at the cause
-        Assert.Contains("seam", msg);            // and the remedy
+        Assert.Contains("DateTime.Now", msg);
+        Assert.Contains("seam", msg);
     }
 
     [Fact]

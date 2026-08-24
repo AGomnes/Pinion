@@ -42,8 +42,6 @@ public class SecretScrubberTests
     [Fact]
     public void Redacts_a_multiline_quoted_secret()
     {
-        // A secret value that spans newlines (verbatim string / wrapped token) must still be redacted —
-        // the assignment scrubber's value group is [\s\S]*?, not '.', which would stop at the first newline.
         var r = SecretScrubber.Scrub("var secret = \"line1\nline2\nline3\";");
         Assert.DoesNotContain("line2", r.Text);
         Assert.Contains("[REDACTED]", r.Text);
@@ -100,7 +98,6 @@ public class HeuristicLlmClientTests
         Assert.Contains("[Fact]", resp.Text);
         Assert.Contains("await Verify(entries)", resp.Text);
         Assert.Contains("new InvoiceService()", resp.Text);
-        // Never asserts expected values — the snapshot is the assertion.
         Assert.DoesNotContain("Assert.Equal", resp.Text);
     }
 }

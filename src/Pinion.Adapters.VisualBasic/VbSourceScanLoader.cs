@@ -31,11 +31,6 @@ internal static class VbSourceScanLoader
         var workspace = new AdhocWorkspace();
         Solution solution = workspace.CurrentSolution;
 
-        // VB nests every declared namespace under the project's RootNamespace (default: the project
-        // name). Without it, scanned symbols carry the WRONG fully-qualified names — and a generated
-        // test calling `LegacyVb.InvoiceService` won't compile against the real assembly's
-        // `LegacyVb.LegacyVb.InvoiceService`. Best effort: explicit <RootNamespace>, else the .vbproj
-        // file name (MSBuild's default), else none (bare directory / .sln input).
         string? rootNs = TryReadRootNamespace(targetPath);
         var options = new Microsoft.CodeAnalysis.VisualBasic.VisualBasicCompilationOptions(
             OutputKind.DynamicallyLinkedLibrary, rootNamespace: rootNs);
@@ -48,8 +43,6 @@ internal static class VbSourceScanLoader
 
         if (tests.Count > 0)
         {
-            // Name ends in "Tests" so the adapter's IsTestProject heuristic catches it, and it references
-            // the production project so test calls resolve to production symbols (→ HasTests).
             var testId = ProjectId.CreateNewId();
             solution = solution.AddProject(ProjectInfo.Create(
                 testId, VersionStamp.Default, "ScannedVbTests", "ScannedVbTests",
@@ -109,7 +102,7 @@ internal static class VbSourceScanLoader
                 || head.Contains("Microsoft.VisualStudio.TestTools", StringComparison.Ordinal))
                 return true;
         }
-        catch { /* ignore */ }
+        catch {  }
         return false;
     }
 
@@ -131,10 +124,6 @@ internal static class VbSourceScanLoader
             .Any(s => ExcludedDirs.Contains(s, StringComparer.OrdinalIgnoreCase));
     }
 
-    // Test-framework assemblies must NOT be referenced by the scanned production project: the adapter's
-    // IsTestProject classifies on these names, so leaving them in (they can appear in the host's TPA when
-    // Pinion itself runs under a test runner) would mark every scanned source project as a test project →
-    // zero analyzed members. Test detection still works via the "ScannedVbTests" project name.
     private static readonly string[] TestFrameworkMarkers =
         { "xunit", "nunit", "mstest", "testplatform", "testhost", "Microsoft.VisualStudio.TestTools" };
 
@@ -150,7 +139,7 @@ internal static class VbSourceScanLoader
             string file = Path.GetFileName(p);
             if (TestFrameworkMarkers.Any(m => file.Contains(m, StringComparison.OrdinalIgnoreCase))) continue;
             try { refs.Add(MetadataReference.CreateFromFile(p)); }
-            catch { /* skip unreadable */ }
+            catch {  }
         }
         return refs;
     }

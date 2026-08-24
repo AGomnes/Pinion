@@ -26,8 +26,8 @@ public class HtmlReportRendererTests
 
         Assert.StartsWith("<!DOCTYPE html>", html);
         Assert.Contains("</html>", html);
-        Assert.Contains("__PINION_ROWS__", html);           // data inlined
-        Assert.Contains("x-data=\"dashboard()\"", html);    // Alpine wired
+        Assert.Contains("__PINION_ROWS__", html);
+        Assert.Contains("x-data=\"dashboard()\"", html);
         Assert.Contains("InvoiceService.CalculateVat", html);
     }
 
@@ -36,13 +36,11 @@ public class HtmlReportRendererTests
     {
         string html = HtmlReportRenderer.Render(SampleReport());
 
-        // The whole point: nothing is fetched at view time (offline + no leaking the code's shape).
         Assert.DoesNotContain("src=\"http", html);
         Assert.DoesNotContain("href=\"http", html);
         Assert.DoesNotContain("//cdn", html);
         Assert.DoesNotContain("jsdelivr", html);
         Assert.DoesNotContain("unpkg", html);
-        // Alpine is actually inlined (not referenced): its runtime token is present.
         Assert.Contains("x-data", html);
         Assert.True(html.Length > 30_000, "expected Alpine to be inlined, making the file sizeable");
     }
@@ -53,9 +51,9 @@ public class HtmlReportRendererTests
         var scores = new Dictionary<string, double> { ["InvoiceService.cs"] = 77.0 };
         string html = HtmlReportRenderer.Render(SampleReport(), scores);
 
-        Assert.Contains("sort('score')", html);   // Score column shown
-        Assert.Contains("\"score\":77", html);     // value in the row data
-        Assert.Contains("mutation score", html);   // headline card
+        Assert.Contains("sort('score')", html);
+        Assert.Contains("\"score\":77", html);
+        Assert.Contains("mutation score", html);
     }
 
     [Fact]
@@ -68,8 +66,6 @@ public class HtmlReportRendererTests
     [Fact]
     public void Overall_mutation_score_is_used_for_the_headline_when_supplied()
     {
-        // A per-file average would differ from the true mutant-weighted prove score; the headline
-        // must show what was passed (the real overall), not a recomputed average.
         var scores = new Dictionary<string, double> { ["InvoiceService.cs"] = 90, ["Calculator.cs"] = 100 };
         string html = HtmlReportRenderer.Render(SampleReport(), scores, overallMutation: 74);
         Assert.Contains("<div class=\"v\">74%</div><div class=\"l\">mutation score", html);
@@ -79,8 +75,8 @@ public class HtmlReportRendererTests
     public void Each_untested_method_carries_its_lock_command()
     {
         string html = HtmlReportRenderer.Render(SampleReport());
-        Assert.Contains("group by file", html);                                  // grouping control
-        Assert.Contains("pinion generate \\u0022C:/proj/Shop\\u0022 --target CalculateVat", html); // copy-able command (JSON-escaped)
+        Assert.Contains("group by file", html);
+        Assert.Contains("pinion generate \\u0022C:/proj/Shop\\u0022 --target CalculateVat", html);
     }
 
     [Fact]

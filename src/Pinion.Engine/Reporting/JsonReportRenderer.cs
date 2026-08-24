@@ -17,7 +17,6 @@ public static class JsonReportRenderer
         WriteIndented = true,
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
         DefaultIgnoreCondition = JsonIgnoreCondition.Never,
-        // Readable signatures: emit `<`/`>`/`&` literally rather than \u00XX escapes.
         Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
         Converters = { new JsonStringEnumConverter() },
     };

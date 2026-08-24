@@ -27,7 +27,6 @@ public static class BehaviorDiff
     private static List<Edit> Diff(string[] a, string[] b)
     {
         int n = a.Length, m = b.Length;
-        // lcs[i,j] = length of the longest common subsequence of a[i..] and b[j..].
         var lcs = new int[n + 1, m + 1];
         for (int i = n - 1; i >= 0; i--)
             for (int j = m - 1; j >= 0; j--)
@@ -50,7 +49,6 @@ public static class BehaviorDiff
     {
         if (!edits.Any(e => e.Op != Op.Equal)) return "";
 
-        // Keep changed lines plus `context` equal lines on each side; collapse the rest to "…".
         var keep = new bool[edits.Count];
         for (int i = 0; i < edits.Count; i++)
             if (edits[i].Op != Op.Equal)

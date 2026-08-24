@@ -2,8 +2,6 @@ using Pinion.Engine.Model;
 
 namespace Pinion.Generate;
 
-// Paid-tier IR for the `generate` (AI) half of the product. Lives in the paid
-// assembly so the free engine has no compile-time path to it.
 
 /// <summary>A characterization test produced for a <see cref="CodeUnit"/>, ready to compile and run.</summary>
 /// <param name="Unit">The unit under characterization.</param>

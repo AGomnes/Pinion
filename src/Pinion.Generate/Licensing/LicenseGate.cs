@@ -83,7 +83,7 @@ public static class LicenseGate
             if (File.Exists(path))
             {
                 try { return (File.ReadAllText(path).Trim(), label); }
-                catch { /* unreadable — keep looking */ }
+                catch {  }
             }
         }
 

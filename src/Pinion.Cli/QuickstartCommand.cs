@@ -77,13 +77,10 @@ internal static class QuickstartCommand
 
         try
         {
-            // 1. Analyze and rank.
             Console.Error.WriteLine($"Analyzing {path} …");
             var adapter = new CSharpAdapter(vlog);
             var units = await adapter.AnalyzeAsync(path, ct);
 
-            // 2. Select the riskiest characterizable targets (public methods on public types, untested),
-            //    then drop the side-effecting ones unless the user opted in.
             var ranked = QuickstartPlanner.SelectRiskiest(path, units, Math.Max(1, top));
             var targets = allowSideEffects ? ranked : ranked.Where(u => !TargetGuards.IsSideEffecting(u)).ToList();
             int skipped = ranked.Count - targets.Count;
@@ -103,11 +100,9 @@ internal static class QuickstartCommand
                 return 1;
             }
 
-            // 3. Decide where the host test project lives (scaffold one when none is supplied).
             var plan = QuickstartPlanner.PlanTestProject(path, testProject?.FullName, tfm);
             if (plan.Error is not null) { Console.Error.WriteLine($"error: {plan.Error}"); return 2; }
 
-            // 4. Dry run: show the plan, touch nothing.
             if (dryRun)
             {
                 Console.Out.WriteLine($"Would lock {targets.Count} behavior(s):");
@@ -120,7 +115,6 @@ internal static class QuickstartCommand
                 return 0;
             }
 
-            // 5. Materialize the test project if needed.
             if (plan.Exists)
                 Console.Error.WriteLine($"Using existing test project: {plan.ProjectFile}");
             else
@@ -130,8 +124,6 @@ internal static class QuickstartCommand
                 Console.Error.WriteLine($"Scaffolded host test project: {plan.ProjectFile}");
             }
 
-            // 6. Lock behavior — deterministic, offline, one build for the batch. The first run restores
-            //    NuGet packages for the freshly scaffolded project, so it can take a minute.
             Console.Error.WriteLine($"Locking {targets.Count} behavior(s) — deterministic, offline (no AI, no API cost)…");
             using var genAdapter = new CSharpTestGenerator
             {

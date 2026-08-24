@@ -60,9 +60,6 @@ public static class RiskScorer
         weights ??= RiskWeights.Default;
         norm ??= RiskNormalization.Default;
 
-        // Any sensitive tag is a strong signal: a single money/auth tag (the flagship case) already carries
-        // most of the domain weight (0.75), and a second distinct concern saturates it. (Previously a lone
-        // tag got only 0.5, under-ranking exactly the high-stakes code the product targets.)
         double domainSensitivity = unit.DomainTags.Count == 0
             ? 0
             : Math.Min(1.0, 0.5 + 0.25 * unit.DomainTags.Count);

@@ -12,8 +12,8 @@ public class TargetGuardsTests
             false, true, System.Array.Empty<string>());
 
     [Theory]
-    [InlineData(DomainTag.Io, true)]    // mutates the outside world → skip by default
-    [InlineData(DomainTag.Money, false)] // sensitivity, not a side effect → run (scrub the snapshot)
+    [InlineData(DomainTag.Io, true)]
+    [InlineData(DomainTag.Money, false)]
     [InlineData(DomainTag.Auth, false)]
     [InlineData(DomainTag.Date, false)]
     public void SideEffecting_flags_io_only(string tag, bool expected)
@@ -63,10 +63,9 @@ public class TargetGuardsTests
     [Fact]
     public void NeverSend_matches_by_namespace_prefix_and_file_glob()
     {
-        // The id is namespace-qualified, so a namespace prefix matches the id; file globs match the path.
         var unit = Unit("Vault.Decrypt", "C:/repo/src/Secrets/Vault.cs");
-        Assert.True(TargetGuards.IsNeverSend(unit, new[] { "N.Vault" }));        // namespace-qualified id
-        Assert.True(TargetGuards.IsNeverSend(unit, new[] { "*/Secrets/*" }));    // file glob
+        Assert.True(TargetGuards.IsNeverSend(unit, new[] { "N.Vault" }));
+        Assert.True(TargetGuards.IsNeverSend(unit, new[] { "*/Secrets/*" }));
         Assert.False(TargetGuards.IsNeverSend(unit, new[] { "*/Public/*" }));
     }
 

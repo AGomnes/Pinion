@@ -1,7 +1,6 @@
 using Pinion.Generate.Licensing;
 using Pinion.LicenseAdmin;
 
-// Tiny vendor CLI: `keygen` and `issue`. Deliberately dependency-light.
 if (args.Length == 0)
 {
     Usage();
@@ -38,7 +37,7 @@ switch (args[0])
         }
         string edition = Arg(args, "--edition") ?? "pro";
         int days = int.TryParse(Arg(args, "--days"), out var d) ? d : 365;
-        string? machine = Arg(args, "--machine"); // optional: node-lock to this machine id
+        string? machine = Arg(args, "--machine");
 
         try
         {

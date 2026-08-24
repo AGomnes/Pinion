@@ -7,14 +7,14 @@ namespace Pinion.Tests;
 public class RegexSamplerTests
 {
     [Theory]
-    [InlineData(@"^[A-Z]{3}-\d{4}$")]            // product code
-    [InlineData(@"\d{3}-\d{2}-\d{4}")]           // SSN-ish (unanchored)
-    [InlineData(@"^[a-z]+@[a-z]+\.[a-z]{2,}$")]  // email-ish
-    [InlineData(@"^(GB|US|NO)\d{6}$")]           // alternation
-    [InlineData(@"^[A-Za-z0-9_]{4,12}$")]        // username
-    [InlineData(@"colou?r")]                      // optional
-    [InlineData(@"a*bc")]                          // star
-    [InlineData(@"^\+?\d{10,15}$")]               // phone with optional +
+    [InlineData(@"^[A-Z]{3}-\d{4}$")]
+    [InlineData(@"\d{3}-\d{2}-\d{4}")]
+    [InlineData(@"^[a-z]+@[a-z]+\.[a-z]{2,}$")]
+    [InlineData(@"^(GB|US|NO)\d{6}$")]
+    [InlineData(@"^[A-Za-z0-9_]{4,12}$")]
+    [InlineData(@"colou?r")]
+    [InlineData(@"a*bc")]
+    [InlineData(@"^\+?\d{10,15}$")]
     public void Generated_string_matches_the_pattern(string pattern)
     {
         string? m = RegexSampler.GenerateMatch(pattern);
@@ -25,7 +25,6 @@ public class RegexSamplerTests
     [Fact]
     public void Unsupported_constructs_return_null_not_a_wrong_string()
     {
-        // We don't model lookarounds — must bail to null, never emit a non-matching "match".
         Assert.Null(RegexSampler.GenerateMatch(@"^(?=.*\d).{8,}$"));
     }
 

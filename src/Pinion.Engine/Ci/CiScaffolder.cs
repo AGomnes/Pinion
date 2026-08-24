@@ -45,12 +45,10 @@ public static class CiScaffolder
         };
     }
 
-    // Forward slashes so the path is valid in YAML on any CI runner (Linux agents).
     private static string Normalize(string path) => path.Replace('\\', '/');
 
     private static string GitHub(string test, string solution, bool withProve)
     {
-        // Explicit 6-space step indentation (raw-string dedent won't align when spliced at column 0).
         string prove = withProve
             ? "\n" +
               "      # Mutation score (paid `prove` tier) — how many regressions the tests actually catch.\n" +
@@ -102,7 +100,6 @@ public static class CiScaffolder
 
     private static string Azure(string test, string solution, bool withProve)
     {
-        // Explicit 2-space step indentation (raw-string dedent won't align when spliced at column 0).
         string prove = withProve
             ? "\n" +
               "  # Mutation score (paid `prove` tier). Needs dotnet-stryker and a PINION_LICENSE pipeline secret.\n" +

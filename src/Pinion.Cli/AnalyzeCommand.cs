@@ -107,8 +107,6 @@ internal static class AnalyzeCommand
 
         try
         {
-            // Pick the language adapter from the input. VB.NET (.vbproj / a directory holding one) routes
-            // to the VB adapter; everything else is C#. Both speak the same IR, so the rest is identical.
             ILanguageAdapter adapter = IsVisualBasic(path)
                 ? new VisualBasicAdapter(log)
                 : new CSharpAdapter(log, includeReferencedProjects: includeRefs);
@@ -116,9 +114,6 @@ internal static class AnalyzeCommand
             Console.Error.WriteLine($"Analyzing {path} …");
             var units = await adapter.AnalyzeAsync(path, ct);
 
-            // Honesty: Pinion reports one language per run. If the input also holds the OTHER .NET
-            // language, say so — a mixed C#+VB solution would otherwise look fully covered when half was
-            // silently skipped. (To stderr, so JSON/Markdown stdout stays clean.)
             if (ContainsBothDotNetLanguages(path))
             {
                 string analyzed = IsVisualBasic(path) ? "VB.NET" : "C#";
@@ -151,7 +146,6 @@ internal static class AnalyzeCommand
                 _ => ConsoleReportRenderer.Render(report),
             };
 
-            // The HTML dashboard is a file artifact — printing it to the console is noise; write it instead.
             if (format != OutputFormat.Html)
                 Console.Out.WriteLine(rendered);
             else if (outFile is null && !open)
@@ -171,10 +165,6 @@ internal static class AnalyzeCommand
 
             if (open) await ReportOutput.OpenAsync(rendered, format, outFile, "pinion-analyze", ct);
 
-            // Opening a single production .csproj loads it and its dependencies, but NOT the test
-            // project that references it — so coverage reads 0% even when the code is well-tested.
-            // Nudge the user toward the solution so test references actually resolve. (To stderr, so
-            // JSON/Markdown stdout stays clean.)
             if (report.TestedMethods == 0 && report.ScannedMethods > 0 && !ResolvedToSolution(path))
                 Console.Error.WriteLine(
                     "note: 0 methods are referenced by tests, so Behavior coverage reads 0%. If this " +
@@ -214,7 +204,7 @@ internal static class AnalyzeCommand
             cs = HasProject(input, "*.csproj");
             vb = HasProject(input, "*.vbproj");
         }
-        else return false; // a single project file is one language
+        else return false;
 
         return cs && vb;
     }
@@ -264,12 +254,10 @@ internal static class AnalyzeCommand
         if (mutation is null)
             return HtmlReportRenderer.Render(report);
 
-        // Per-file score map (file name → 0–100); last write wins if two paths share a name.
         var map = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
         foreach (var f in mutation.Files)
             map[Path.GetFileName(f.File)] = f.Score;
 
-        // Pass the true mutant-weighted overall so the headline matches `prove` exactly.
         return HtmlReportRenderer.Render(report, map, mutation.Score);
     }
 

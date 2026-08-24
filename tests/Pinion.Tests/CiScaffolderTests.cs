@@ -18,7 +18,6 @@ public class CiScaffolderTests
     public void Generated_workflow_is_valid_yaml(CiProvider provider, bool withProve)
     {
         string yaml = CiScaffolder.Generate(new CiOptions(provider, "tests/My.Tests.csproj", null, withProve));
-        // Throws on bad indentation/structure — this is the guard against splice/indent regressions.
         ParseYaml(yaml);
     }
 
@@ -26,7 +25,6 @@ public class CiScaffolderTests
     public void Behavior_gate_runs_the_named_test_project()
     {
         string yaml = CiScaffolder.Generate(new CiOptions(CiProvider.GitHub, "tests/My.Tests.csproj", null, false));
-        // The core value: the committed characterization tests run as the gate.
         Assert.Contains("dotnet test tests/My.Tests.csproj", yaml);
     }
 
@@ -51,6 +49,6 @@ public class CiScaffolderTests
     {
         string yaml = CiScaffolder.Generate(new CiOptions(CiProvider.GitHub, "", null, false));
         Assert.Contains("path/to/YourProject.Tests.csproj", yaml);
-        ParseYaml(yaml); // still valid YAML
+        ParseYaml(yaml);
     }
 }

@@ -74,7 +74,6 @@ public sealed class CSharpTestGenerator : IGenerationAdapter, IDisposable
         var results = new Dictionary<CodeUnit, GenerationResult>();
         var active = new List<(CodeUnit Unit, GeneratedTest Test)>();
 
-        // 1. Synthesize + emit every target (no build yet).
         foreach (var unit in ordered)
         {
             try
@@ -92,7 +91,6 @@ public sealed class CSharpTestGenerator : IGenerationAdapter, IDisposable
         string[] args = { "test", testProject, "--nologo", "--verbosity", "quiet", "--filter", "FullyQualifiedName~Pinion.Generated" };
         var timeout = TimeSpan.FromSeconds(Math.Max(600, RunTimeoutSeconds));
 
-        // 2. One build/run; on a compile failure, drop the offending generated files and retry.
         for (int attempt = 0; active.Count > 0; attempt++)
         {
             var run = await ProcessRunner.RunAsync("dotnet", args, env: env, timeout: timeout, ct: ct).ConfigureAwait(false);
@@ -126,7 +124,6 @@ public sealed class CSharpTestGenerator : IGenerationAdapter, IDisposable
 
         if (active.Count == 0) return InOrder(ordered, results);
 
-        // 3. Promote every surviving target's Verify *.received → scrubbed *.verified.
         foreach (var (_, t) in active)
         {
             foreach (var rec in Directory.GetFiles(outDir, t.TestClassName + ".*.received.*"))
@@ -137,7 +134,6 @@ public sealed class CSharpTestGenerator : IGenerationAdapter, IDisposable
             }
         }
 
-        // 4. One confirming run: re-run the now-locked suite and make sure each snapshot actually passes.
         var confirm = await ProcessRunner.RunAsync("dotnet", args, env: env, timeout: timeout, ct: ct).ConfigureAwait(false);
         bool buildOk = !confirm.TimedOut && !HasBuildError(confirm.Combined);
 
@@ -153,9 +149,6 @@ public sealed class CSharpTestGenerator : IGenerationAdapter, IDisposable
                 continue;
             }
 
-            // Verify writes a fresh *.received ONLY when the confirm run's output differs from the locked
-            // snapshot — i.e. the method is non-deterministic. A flaky golden master fails every future
-            // `verify`, so quarantine it: drop the test + its snapshot and report the cause + remedy.
             var received = Directory.GetFiles(outDir, t.TestClassName + ".*.received.*");
             if (received.Length > 0)
             {
@@ -214,7 +207,7 @@ public sealed class CSharpTestGenerator : IGenerationAdapter, IDisposable
                 if (unit.StartLine >= start && unit.EndLine <= end &&
                     (best is null || type.Span.Length < best.Span.Length))
                 {
-                    best = type; // innermost type that contains the method
+                    best = type;
                 }
             }
 
@@ -245,7 +238,6 @@ public sealed class CSharpTestGenerator : IGenerationAdapter, IDisposable
         string className = ClassNameFrom(generatedBody)
             ?? Regex.Replace(unit.DisplayName, @"\W", "_") + "_CharacterizationTests";
 
-        // Harden the filename: identifier chars only, and never let it escape outDir.
         className = Regex.Replace(Path.GetFileNameWithoutExtension(className), @"[^A-Za-z0-9_]", "_");
         string filePath = Path.GetFullPath(Path.Combine(outDir, className + ".cs"));
         if (Path.GetDirectoryName(filePath) != Path.GetFullPath(outDir))
@@ -262,7 +254,6 @@ public sealed class CSharpTestGenerator : IGenerationAdapter, IDisposable
             ?? throw new InvalidOperationException("Call ConfigureGeneration(testProjectPath) before generating tests.");
         string outDir = Path.GetDirectoryName(test.FilePath)!;
 
-        // Headless: never let Verify pop a diff tool.
         var env = new Dictionary<string, string> { ["DiffEngine_Disabled"] = "true" };
         string[] args =
         {
@@ -276,7 +267,6 @@ public sealed class CSharpTestGenerator : IGenerationAdapter, IDisposable
         if (HasBuildError(first.Combined))
             return new ExecutionResult(Compiled: false, Passed: false, ExtractCompilerErrors(first.Combined), null);
 
-        // Verify's first run with no approved snapshot fails and writes *.received.*.
         var received = Directory.GetFiles(outDir, test.TestClassName + ".*.received.*");
         if (received.Length > 0)
         {
@@ -284,14 +274,11 @@ public sealed class CSharpTestGenerator : IGenerationAdapter, IDisposable
             foreach (var rec in received)
             {
                 string verified = rec.Replace(".received.", ".verified.");
-                // Scrub the golden master — captured return values can contain real secrets/PII,
-                // and this file gets committed to the repo.
                 File.WriteAllText(verified, SecretScrubber.Scrub(File.ReadAllText(rec)).Text);
                 File.Delete(rec);
                 snapshot ??= verified;
             }
 
-            // Re-run to confirm the captured snapshot now passes.
             var second = await ProcessRunner.RunAsync("dotnet", args, env: env, timeout: RunTimeout, ct: ct).ConfigureAwait(false);
             if (second.TimedOut)
                 return new ExecutionResult(false, false, new[] { $"test run timed out after {RunTimeoutSeconds}s" }, snapshot);
@@ -301,10 +288,6 @@ public sealed class CSharpTestGenerator : IGenerationAdapter, IDisposable
             if (second.ExitCode == 0)
                 return new ExecutionResult(true, true, Array.Empty<string>(), snapshot);
 
-            // The confirm run failed. Verify re-emits *.received only when the output differs from the
-            // snapshot we just locked — i.e. the method is non-deterministic. Quarantine the flaky golden
-            // master (and its test) and report the cause, instead of shipping a snapshot that will fail
-            // every future `verify`.
             var reappeared = Directory.GetFiles(outDir, test.TestClassName + ".*.received.*");
             if (reappeared.Length > 0)
             {
@@ -323,7 +306,6 @@ public sealed class CSharpTestGenerator : IGenerationAdapter, IDisposable
             return new ExecutionResult(true, true, Array.Empty<string>(), snapshot);
         }
 
-        // Compiled, ran, but failed for a non-snapshot reason.
         return new ExecutionResult(true, false, Tail(first.Combined), null);
     }
 
@@ -370,7 +352,7 @@ public sealed class CSharpTestGenerator : IGenerationAdapter, IDisposable
             if (!File.Exists(path) || File.ReadAllText(path) != GeneratedSetupSource)
                 File.WriteAllText(path, GeneratedSetupSource);
         }
-        catch { /* best effort — a missing setup file just means snapshots aren't culture-pinned */ }
+        catch {  }
     }
 
     private static bool HasBuildError(string output) =>

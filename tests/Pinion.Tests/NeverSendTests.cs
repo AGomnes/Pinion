@@ -17,7 +17,6 @@ public class NeverSendTests
         1, 5, System.Array.Empty<string>(), System.Array.Empty<string>(), System.Array.Empty<string>(),
         false, true, System.Array.Empty<string>());
 
-    // Throws if anything is sent or any context is read — proves nothing left the machine.
     private sealed class TripwireLlm : ILlmClient
     {
         public string Name => "tripwire";
@@ -41,7 +40,7 @@ public class NeverSendTests
         var gen = new TestGenerator(new TripwireAdapter(), new TripwireLlm(),
             neverSend: new[] { "*/Secrets/*" });
 
-        var result = await gen.GenerateAsync(Unit(), default); // throws via tripwires if it sends
+        var result = await gen.GenerateAsync(Unit(), default);
 
         Assert.False(result.Success);
         Assert.Equal(0, result.Attempts);
@@ -51,9 +50,6 @@ public class NeverSendTests
     [Fact]
     public async Task Never_send_is_enforced_even_in_dry_run()
     {
-        // Dry-run normally prints the exact outbound payload; for a never-send unit it must withhold
-        // it entirely (extracting context to build the preview would read the very source we promised
-        // never leaves the machine).
         var options = GenerationOptions.Default with { DryRun = true };
         var gen = new TestGenerator(new TripwireAdapter(), new TripwireLlm(), options,
             neverSend: new[] { "MyCompany.Secrets" });
@@ -67,7 +63,6 @@ public class NeverSendTests
     [Fact]
     public async Task Unmatched_unit_is_sent_normally()
     {
-        // A unit that matches no rule must NOT be blocked — guard against over-broad matching.
         var llm = new RecordingLlm("class T {}");
         var adapter = new PassThroughAdapter();
         var gen = new TestGenerator(adapter, llm, neverSend: new[] { "*/Secrets/*" });

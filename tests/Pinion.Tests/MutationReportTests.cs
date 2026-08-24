@@ -22,7 +22,6 @@ public class MutationReportTests
         {
             var report = MutationTester.Parse(path);
 
-            // Overall: killed 3 + timeout 1 of 6 tested = 66.7%.
             Assert.Equal(3, report.Killed);
             Assert.Equal(1, report.Survived);
             Assert.Equal(1, report.NoCoverage);

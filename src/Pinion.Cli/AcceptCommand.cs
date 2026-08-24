@@ -69,7 +69,6 @@ internal static class AcceptCommand
                 Console.Error.WriteLine($"error: test project not found: {testProject}");
                 return 2;
             }
-            // Accepting is destructive (it overwrites golden masters), so require an explicit scope.
             if (!all && string.IsNullOrWhiteSpace(name))
             {
                 Console.Error.WriteLine("error: specify which changes to accept — --name <substring> (recommended) or --all.");

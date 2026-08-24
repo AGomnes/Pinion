@@ -16,7 +16,7 @@ public class SourceScanLoaderTests : IDisposable
 
     public void Dispose()
     {
-        try { Directory.Delete(_dir, recursive: true); } catch { /* best effort */ }
+        try { Directory.Delete(_dir, recursive: true); } catch {  }
     }
 
     private void Write(string name, string content) => File.WriteAllText(Path.Combine(_dir, name), content);
@@ -27,7 +27,6 @@ public class SourceScanLoaderTests : IDisposable
         Write("Calculator.cs", "namespace S { public class Calculator { public int Add(int a,int b)=>a+b; } }");
         Write("CalculatorTests.cs", "using Xunit; namespace S { public class CalculatorTests { } }");
 
-        // A file under obj/ must be ignored.
         Directory.CreateDirectory(Path.Combine(_dir, "obj"));
         File.WriteAllText(Path.Combine(_dir, "obj", "Generated.cs"), "namespace S { class G {} }");
 
@@ -36,11 +35,10 @@ public class SourceScanLoaderTests : IDisposable
         var prod = solution.Projects.Single(p => p.Name == "ScannedSources");
         var tests = solution.Projects.Single(p => p.Name == "ScannedTests");
 
-        // Ignore the synthetic implicit-usings document the loader injects.
         var prodDocs = prod.Documents.Where(d => d.Name != "PinionGlobalUsings.cs").ToList();
         var testDocs = tests.Documents.Where(d => d.Name != "PinionGlobalUsings.cs").ToList();
 
-        Assert.Single(prodDocs); // Calculator.cs only — obj/ excluded
+        Assert.Single(prodDocs);
         Assert.Equal("Calculator.cs", prodDocs.Single().Name);
         Assert.Single(testDocs);
         Assert.Equal("CalculatorTests.cs", testDocs.Single().Name);
@@ -56,7 +54,6 @@ public class SourceScanLoaderTests : IDisposable
 
         Assert.Empty(solution.Projects.Where(p => p.Name == "ScannedTests"));
         Assert.Single(project.Documents.Where(d => d.Name != "PinionGlobalUsings.cs"));
-        // Runtime references were attached, so the compilation is usable.
         Assert.NotEmpty(project.MetadataReferences);
     }
 }

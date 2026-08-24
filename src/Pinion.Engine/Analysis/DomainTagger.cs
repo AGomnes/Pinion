@@ -10,9 +10,6 @@ namespace Pinion.Engine.Analysis;
 /// </summary>
 public static class DomainTagger
 {
-    // Whole-word-ish keyword → tag. Matching is case-insensitive substring against a
-    // normalized token blob; chosen keywords are specific enough that substring is safe
-    // ("vat", "auth", "sql"). Order doesn't matter; a unit can earn several tags.
     private static readonly (string Tag, string[] Keywords)[] Rules =
     {
         (DomainTag.Money, new[]
@@ -54,9 +51,6 @@ public static class DomainTagger
         signals.AddRange(parameterTypes);
         signals.AddRange(referencedNames);
 
-        // Tokenize identifiers into words ("CalculateVat" → calculate, vat) and match
-        // against whole tokens. Substring matching would tag "ValidateToken" as "date"
-        // because "valiDATE" contains "date".
         var tokens = signals
             .Where(s => !string.IsNullOrEmpty(s))
             .SelectMany(Tokenize)
@@ -71,9 +65,6 @@ public static class DomainTagger
         return tags;
     }
 
-    // Short keywords (vat, tax, sql) must match a whole token; longer ones may match as
-    // a prefix to absorb plurals/derivations ("invoice" → "invoices", "auth" → "authenticate").
-    // A prefix is never a mid-word match, so "validate" never matches "date".
     private static bool Matches(string token, string keyword) =>
         token.Equals(keyword, StringComparison.Ordinal)
         || (keyword.Length >= 4 && token.StartsWith(keyword, StringComparison.Ordinal));
@@ -85,8 +76,8 @@ public static class DomainTagger
         foreach (char c in identifier)
         {
             bool boundary = !char.IsLetterOrDigit(c)
-                || (char.IsUpper(c) && char.IsLower(prev))      // camelCase → camel, Case
-                || (char.IsDigit(c) && char.IsLetter(prev));    // letter→digit split
+                || (char.IsUpper(c) && char.IsLower(prev))
+                || (char.IsDigit(c) && char.IsLetter(prev));
             if (boundary && word.Length > 0)
             {
                 yield return word.ToString().ToLowerInvariant();

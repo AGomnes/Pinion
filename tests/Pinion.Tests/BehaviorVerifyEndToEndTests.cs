@@ -42,12 +42,11 @@ public class BehaviorVerifyEndToEndTests
         string testProject = Path.Combine(sampleRoot, "tests", "LegacyShop.Tests", "LegacyShop.Tests.csproj");
         string outDir = Path.Combine(Path.GetDirectoryName(testProject)!, "PinionCharacterization");
 
-        var render = UnitAt(hardCases, "Formatter.Render", "Render"); // deterministic; records "#0"
+        var render = UnitAt(hardCases, "Formatter.Render", "Render");
 
         if (Directory.Exists(outDir)) Directory.Delete(outDir, recursive: true);
         try
         {
-            // 1. Lock behavior.
             using (var gen = new CSharpTestGenerator())
             {
                 gen.ConfigureGeneration(testProject);
@@ -55,13 +54,11 @@ public class BehaviorVerifyEndToEndTests
                 Assert.True(results.Single().Success, string.Join(" | ", results.Single().Diagnostics));
             }
 
-            // 2. Verify against UNCHANGED code → everything identical, behavior preserved.
             var clean = await new BehaviorVerifier().VerifyAsync(testProject);
             Assert.False(clean.BuildFailed);
             Assert.True(clean.BehaviorPreserved, "expected identical behavior, got: " +
                 string.Join("; ", clean.Entries.Where(e => e.Status == BehaviorChange.Changed).Select(e => e.Name)));
 
-            // 3. Simulate a migration that changed behavior by doctoring the golden master, then re-verify.
             string master = Directory.GetFiles(outDir, "*.verified.*").Single();
             File.WriteAllText(master, File.ReadAllText(master).Replace("#0", "#CHANGED"));
 
@@ -69,8 +66,8 @@ public class BehaviorVerifyEndToEndTests
             Assert.False(changed.BuildFailed);
             Assert.Equal(1, changed.Changed);
             var entry = changed.Entries.Single(e => e.Status == BehaviorChange.Changed);
-            Assert.Contains("#CHANGED", entry.Diff);   // − was (the doctored "locked" value)
-            Assert.Contains("#0", entry.Diff);          // + now (the real current output)
+            Assert.Contains("#CHANGED", entry.Diff);
+            Assert.Contains("#0", entry.Diff);
         }
         finally
         {

@@ -49,9 +49,9 @@ public class SeamRewriterTests
             """, out var skipped);
 
         Assert.Empty(skipped);
-        Assert.Contains("Stamp(action, DateTime.Now)", rewritten);            // wrapper delegates with the original expression
-        Assert.Contains("global::System.DateTime now", rewritten);            // overload takes the value
-        Assert.Contains("now.ToString(\"o\")", rewritten);                    // body reads the parameter, not the ambient
+        Assert.Contains("Stamp(action, DateTime.Now)", rewritten);
+        Assert.Contains("global::System.DateTime now", rewritten);
+        Assert.Contains("now.ToString(\"o\")", rewritten);
         AssertCompiles(rewritten);
     }
 
@@ -92,7 +92,7 @@ public class SeamRewriterTests
             }
             """, out _);
 
-        Assert.Contains("Receipt(Guid.NewGuid(), DateTime.UtcNow)", rewritten); // wrapper, occurrence order
+        Assert.Contains("Receipt(Guid.NewGuid(), DateTime.UtcNow)", rewritten);
         Assert.Contains("global::System.Guid newGuid, global::System.DateTime utcNow", rewritten);
         AssertCompiles(rewritten);
     }
@@ -108,9 +108,8 @@ public class SeamRewriterTests
             }
             """, out _);
 
-        // One `now` parameter, both reads replaced (also freezes the double-read — deterministic by design).
         Assert.Contains("(now - born).TotalDays + now.Millisecond", rewritten);
-        Assert.Single(rewritten.Split("global::System.DateTime now").Skip(1)); // parameter declared exactly once
+        Assert.Single(rewritten.Split("global::System.DateTime now").Skip(1));
         AssertCompiles(rewritten);
     }
 
@@ -147,7 +146,7 @@ public class SeamRewriterTests
             """, out var skipped);
 
         Assert.Empty(skipped);
-        Assert.Contains("nowSeam", rewritten); // `now` is taken by the user's parameter
+        Assert.Contains("nowSeam", rewritten);
         AssertCompiles(rewritten);
     }
 
@@ -164,14 +163,13 @@ public class SeamRewriterTests
 
         string twice = Rewrite(once, out var skipped);
 
-        Assert.Equal(once, twice); // nothing further to do
+        Assert.Equal(once, twice);
         Assert.Contains(skipped, s => s.Reason.Contains("already seamed", StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]
     public void Generic_and_override_edges_are_handled_safely()
     {
-        // Generic method → skipped with a manual reason; override → wrapper keeps `override`, overload drops it.
         string rewritten = Rewrite("""
             using System;
             public abstract class Base { public abstract string Who(); }
@@ -184,15 +182,13 @@ public class SeamRewriterTests
 
         Assert.Contains(skipped, s => s.Method == "C.Tag" && s.Reason.Contains("generic"));
         Assert.Contains("public override string Who() => Who(DateTime.Now);", rewritten.Replace("  ", " "));
-        Assert.Contains("public string Who(global::System.DateTime now)", rewritten); // no `override` on the overload
+        Assert.Contains("public string Who(global::System.DateTime now)", rewritten);
         AssertCompiles(rewritten);
     }
 
     [Fact]
     public void Seam_params_are_inserted_before_optional_and_params_parameters()
     {
-        // Found dogfooding eShopOnWeb: appending a required seam param after `string token = null`
-        // is CS1737. Seam params must slot in before optionals (and before a `params` array).
         string rewritten = Rewrite("""
             using System;
             public class C
@@ -203,10 +199,8 @@ public class SeamRewriterTests
             """, out var skipped);
 
         Assert.Empty(skipped);
-        // Overloads: seam param before the optional / before params.
         Assert.Contains("A(string user, global::System.DateTime utcNow, string token = null)", rewritten);
         Assert.Contains("B(global::System.Guid newGuid, params int[] xs)", rewritten);
-        // Wrappers: argument order mirrors the insertion.
         Assert.Contains("A(user, DateTime.UtcNow, token)", rewritten);
         Assert.Contains("B(Guid.NewGuid(), xs)", rewritten);
         AssertCompiles(rewritten);
@@ -224,14 +218,12 @@ public class SeamRewriterTests
             """;
         string rewritten = Rewrite(src, out _);
 
-        Assert.Equal(src, rewritten); // a nameof read is not a behavioral dependency — untouched
+        Assert.Equal(src, rewritten);
     }
 
     [Fact]
     public void Seamable_kinds_stay_in_lockstep_with_the_seam_analyzer_vocabulary()
     {
-        // Every ambient `pinion seam` fixes must be something `analyze` reports as an obstacle —
-        // otherwise the tool would fix things the report never told the user about (or vice versa).
         foreach (var spec in SeamRewriter.Specs.Values)
         {
             string member = spec.Display.EndsWith("NewGuid") ? spec.Display + "()" : spec.Display;

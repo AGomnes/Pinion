@@ -16,7 +16,6 @@ public static class GeneratedCode
         if (EndsWithAny(name, ".designer.cs", ".designer.vb", ".g.cs", ".g.i.cs", ".g.vb"))
             return true;
 
-        // VB projects keep generated resources/settings/assembly-info under a "My Project" folder.
         foreach (var segment in filePath.Split('/', '\\'))
             if (segment.Equals("My Project", StringComparison.OrdinalIgnoreCase))
                 return true;

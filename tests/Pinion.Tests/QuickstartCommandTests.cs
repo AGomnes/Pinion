@@ -24,8 +24,8 @@ public class QuickstartCommandTests
         {
             Unit("A.VeryRisky", complexity: 25, hasTests: false, publicEntry: true),
             Unit("B.SomewhatRisky", complexity: 8, hasTests: false, publicEntry: true),
-            Unit("C.Tested", complexity: 40, hasTests: true, publicEntry: true),     // excluded: already tested
-            Unit("D.Internal", complexity: 30, hasTests: false, publicEntry: false), // excluded: not callable externally
+            Unit("C.Tested", complexity: 40, hasTests: true, publicEntry: true),
+            Unit("D.Internal", complexity: 30, hasTests: false, publicEntry: false),
         };
 
         var picked = QuickstartPlanner.SelectRiskiest("proj", units, top: 10);

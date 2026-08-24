@@ -41,8 +41,6 @@ internal static class SourceScanLoader
 
         if (tests.Count > 0)
         {
-            // Name ends in "Tests" so the adapter's IsTestProject heuristic catches it
-            // (we can't add real xunit refs here).
             var testId = ProjectId.CreateNewId();
             solution = solution.AddProject(ProjectInfo.Create(
                 testId, VersionStamp.Default, "ScannedTests", "ScannedTests",
@@ -55,9 +53,6 @@ internal static class SourceScanLoader
         return solution;
     }
 
-    // The SDK's default ImplicitUsings set. Without these, source that relies on implicit usings
-    // (e.g. IReadOnlyList from System.Collections.Generic) resolves to error types — which breaks
-    // semantic-model-based work like deterministic test synthesis.
     private const string ImplicitUsings = """
         global using global::System;
         global using global::System.Collections.Generic;
@@ -113,12 +108,10 @@ internal static class SourceScanLoader
             || name.EndsWith("Test", StringComparison.OrdinalIgnoreCase))
             return true;
 
-        // Directory named *Tests/*Test.
         if (path.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
                 .Any(s => s.EndsWith("Tests", StringComparison.OrdinalIgnoreCase)))
             return true;
 
-        // Content signal — a test framework is imported.
         try
         {
             string head = File.ReadAllText(path);
@@ -127,7 +120,7 @@ internal static class SourceScanLoader
                 || head.Contains("Microsoft.VisualStudio.TestTools", StringComparison.Ordinal))
                 return true;
         }
-        catch { /* ignore */ }
+        catch {  }
 
         return false;
     }
@@ -142,7 +135,7 @@ internal static class SourceScanLoader
         {
             if (string.IsNullOrEmpty(p)) continue;
             try { refs.Add(MetadataReference.CreateFromFile(p)); }
-            catch { /* skip unreadable */ }
+            catch {  }
         }
         return refs;
     }

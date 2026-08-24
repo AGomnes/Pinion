@@ -43,9 +43,6 @@ public sealed class CSharpAdapter : ILanguageAdapter
     {
         string path = ResolveInputPath(projectOrSolutionPath);
 
-        // `analyze Foo.csproj` should report Foo's methods — not silently include methods from Foo's
-        // project references. So scope to the target project unless the input is a solution or the caller
-        // opted into referenced projects.
         bool isProject = path.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase);
         string? targetProjectPath = isProject && !_includeReferencedProjects ? path : null;
 
@@ -54,8 +51,6 @@ public sealed class CSharpAdapter : ILanguageAdapter
         try
         {
             Solution solution = await LoadSolutionAsync(path, ct, w => msbuild = w).ConfigureAwait(false);
-            // The source-scan fallback returns an AdhocWorkspace that isn't `msbuild`; track it so it's
-            // disposed too (it was previously leaked for the process lifetime).
             if (!ReferenceEquals(solution.Workspace, msbuild)) scanWorkspace = solution.Workspace;
             return await AnalyzeSolutionAsync(solution, targetProjectPath, ct).ConfigureAwait(false);
         }
@@ -68,17 +63,13 @@ public sealed class CSharpAdapter : ILanguageAdapter
 
     private async Task<IReadOnlyList<CodeUnit>> AnalyzeSolutionAsync(Solution solution, string? targetProjectPath, CancellationToken ct)
     {
-        // Which symbols any test project references — turns "untested" into a fact.
         var testedMethodIds = await CollectTestedMethodIdsAsync(solution, ct).ConfigureAwait(false);
 
-        // Pass 1: gather every production method with its declaration + semantic model.
         var raw = await GatherProductionMethodsAsync(solution, targetProjectPath, ct).ConfigureAwait(false);
         var byId = new Dictionary<string, RawMethod>(StringComparer.Ordinal);
-        foreach (var m in raw) byId.TryAdd(m.Id, m); // first declaration wins (partials/dupes)
+        foreach (var m in raw) byId.TryAdd(m.Id, m);
         var knownIds = byId.Keys.ToHashSet(StringComparer.Ordinal);
 
-        // Syntactic (simple name, parameter count) → ids index, used to recover calls Roslyn can't resolve
-        // on unrestored/legacy code (where blast-radius otherwise collapses to ~0).
         var nameArity = new Dictionary<(string, int), List<string>>();
         foreach (var m in byId.Values)
         {
@@ -86,7 +77,6 @@ public sealed class CSharpAdapter : ILanguageAdapter
             (nameArity.TryGetValue(key, out var list) ? list : nameArity[key] = new()).Add(m.Id);
         }
 
-        // Pass 2: call graph (callees within the analyzed set) + referenced names for tagging.
         var calleesById = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
         var refNamesById = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
         var callersById = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
@@ -102,7 +92,6 @@ public sealed class CSharpAdapter : ILanguageAdapter
                     .Add(m.Id);
         }
 
-        // Pass 3: assemble enriched IR.
         var units = new List<CodeUnit>(byId.Count);
         foreach (var m in byId.Values)
         {
@@ -126,9 +115,6 @@ public sealed class CSharpAdapter : ILanguageAdapter
         {
             ct.ThrowIfCancellationRequested();
             if (project.Language != LanguageNames.CSharp) continue;
-            // Scope to the target project when requested (single-project analyze without --include-refs).
-            // Only filter projects that HAVE a file path — the source-scan fallback flattens everything into
-            // one ad-hoc project with no path, and that IS the target, so it must never be filtered out.
             if (targetProjectPath is not null && project.FilePath is not null && !SamePath(project.FilePath, targetProjectPath)) continue;
 
             var compilation = await project.GetCompilationAsync(ct).ConfigureAwait(false);
@@ -137,7 +123,7 @@ public sealed class CSharpAdapter : ILanguageAdapter
             foreach (var tree in compilation.SyntaxTrees)
             {
                 ct.ThrowIfCancellationRequested();
-                if (GeneratedCode.IsGenerated(tree.FilePath)) continue; // skip *.Designer.cs / *.g.cs noise
+                if (GeneratedCode.IsGenerated(tree.FilePath)) continue;
                 var model = compilation.GetSemanticModel(tree);
                 var root = await tree.GetRootAsync(ct).ConfigureAwait(false);
                 var usings = CSharpSyntaxFacts.FileUsings(root);
@@ -165,7 +151,6 @@ public sealed class CSharpAdapter : ILanguageAdapter
             ct.ThrowIfCancellationRequested();
             switch (node)
             {
-                // Method, constructor, operator, conversion operator, destructor.
                 case BaseMethodDeclarationSyntax bm:
                     if (model.GetDeclaredSymbol(bm, ct) is IMethodSymbol ms)
                         yield return (ms, bm, BodyOf(bm));
@@ -176,13 +161,11 @@ public sealed class CSharpAdapter : ILanguageAdapter
                         yield return (ls, lf, lb);
                     break;
 
-                // get/set/init/add/remove with a real body (computed accessor) — skips auto-properties.
                 case AccessorDeclarationSyntax a when BodyOf(a) is { } ab:
                     if (model.GetDeclaredSymbol(a, ct) is IMethodSymbol asym)
                         yield return (asym, a, ab);
                     break;
 
-                // Expression-bodied property / indexer: `public int X => …;` (its getter is the unit).
                 case PropertyDeclarationSyntax p when p.ExpressionBody is { } pe:
                     if (model.GetDeclaredSymbol(p, ct) is IPropertySymbol { GetMethod: { } pg })
                         yield return (pg, p, pe);
@@ -223,8 +206,6 @@ public sealed class CSharpAdapter : ILanguageAdapter
             if (node is not (InvocationExpressionSyntax or ObjectCreationExpressionSyntax)) continue;
 
             var info = m.Model.GetSymbolInfo(node, ct);
-            // Prefer the resolved symbol; on unrestored/legacy code, fall back to the overload candidates
-            // Roslyn knew but couldn't pick (CandidateSymbols) so the call graph stays populated.
             IMethodSymbol? called = info.Symbol as IMethodSymbol
                 ?? info.CandidateSymbols.OfType<IMethodSymbol>().FirstOrDefault();
 
@@ -238,9 +219,6 @@ public sealed class CSharpAdapter : ILanguageAdapter
                 continue;
             }
 
-            // Fully unresolved (typical when references didn't restore): recover blast-radius with a
-            // SYNTACTIC name+arity match, but only when UNAMBIGUOUS (exactly one in-set method) so a common
-            // name like "Add" can't be misattributed across overloads/types.
             if (node is InvocationExpressionSyntax inv && InvokedName(inv) is { } name)
             {
                 refNames.Add(name);
@@ -261,9 +239,9 @@ public sealed class CSharpAdapter : ILanguageAdapter
     /// <summary>The simple method name invoked, syntactically — for the resolution-free blast-radius fallback.</summary>
     private static string? InvokedName(InvocationExpressionSyntax inv) => inv.Expression switch
     {
-        MemberAccessExpressionSyntax ma => ma.Name.Identifier.ValueText,   // x.Foo()
-        MemberBindingExpressionSyntax mb => mb.Name.Identifier.ValueText,  // x?.Foo()
-        IdentifierNameSyntax id => id.Identifier.ValueText,                // Foo()
+        MemberAccessExpressionSyntax ma => ma.Name.Identifier.ValueText,
+        MemberBindingExpressionSyntax mb => mb.Name.Identifier.ValueText,
+        IdentifierNameSyntax id => id.Identifier.ValueText,
         _ => null,
     };
 
@@ -286,7 +264,6 @@ public sealed class CSharpAdapter : ILanguageAdapter
             .Select(p => new ParamInfo(p.Name, RoslynSymbols.ShortType(p.Type)))
             .ToList();
 
-        // Parameter names are strong domain signals ("amount", "token"), so feed them in too.
         var nameSignals = new List<string>(refNames);
         nameSignals.AddRange(symbol.Parameters.Select(p => p.Name));
 
@@ -354,15 +331,12 @@ public sealed class CSharpAdapter : ILanguageAdapter
                 {
                     switch (node)
                     {
-                        // A call or construction protects the method/constructor it targets.
                         case InvocationExpressionSyntax:
                         case ObjectCreationExpressionSyntax:
                             if (model.GetSymbolInfo(node, ct).Symbol is IMethodSymbol method)
                                 tested.Add(RoslynSymbols.MethodId(method));
                             break;
 
-                        // Reading/writing a property or indexer in a test protects its accessor(s) — needed
-                        // now that computed properties/indexers are their own units (else they'd look untested).
                         case MemberAccessExpressionSyntax:
                         case ElementAccessExpressionSyntax:
                             if (model.GetSymbolInfo(node, ct).Symbol is IPropertySymbol prop)

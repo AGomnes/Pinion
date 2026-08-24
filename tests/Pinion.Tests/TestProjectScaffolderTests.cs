@@ -11,7 +11,7 @@ public class TestProjectScaffolderTests
         string csproj = TestProjectScaffolder.Csproj(@"..\MyApp\MyApp.csproj", "net9.0");
 
         Assert.Contains("<TargetFramework>net9.0</TargetFramework>", csproj);
-        Assert.Contains("Verify.Xunit", csproj);                                   // the snapshot engine
+        Assert.Contains("Verify.Xunit", csproj);
         Assert.Contains("Microsoft.NET.Test.Sdk", csproj);
         Assert.Contains(@"<ProjectReference Include=""..\MyApp\MyApp.csproj"" />", csproj);
         Assert.Contains("<IsTestProject>true</IsTestProject>", csproj);

@@ -37,26 +37,23 @@ public class VbGenerateTests
         using var synth = new CSharpDeterministicSynthesizer();
         string src = await synth.SynthesizeAsync(unit, sample, default);
 
-        // A C# test file…
         Assert.Contains("// pinion-format:", src);
         Assert.Contains("namespace Pinion.Generated;", src);
-        Assert.Contains("var sut = new global::LegacyVb.InvoiceService()", src);   // VB type, C# construction
-        // …whose inputs carry the constants mined from the VB body:
-        Assert.Contains("\"NO\"", src);            // Select Case "NO"
+        Assert.Contains("var sut = new global::LegacyVb.InvoiceService()", src);
+        Assert.Contains("\"NO\"", src);
         Assert.Contains("\"UK\"", src);
-        Assert.Contains("10000", src);             // the amount > 10000D threshold (as boundary neighbours)
-        Assert.Contains("true", src);              // Boolean isExempt varied
+        Assert.Contains("10000", src);
+        Assert.Contains("true", src);
     }
 
     [Fact]
     public async Task Vb_sub_new_constructor_and_gross_total_also_synthesize()
     {
-        // GrossTotal exercises a VB method calling another VB method — plain method resolution.
         var (unit, sample) = await UnitFor("InvoiceService.GrossTotal");
 
         using var synth = new CSharpDeterministicSynthesizer();
         string src = await synth.SynthesizeAsync(unit, sample, default);
 
-        Assert.Contains("sut.GrossTotal(0m", src); // decimal param synthesized as an m-suffixed C# literal
+        Assert.Contains("sut.GrossTotal(0m", src);
     }
 }

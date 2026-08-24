@@ -66,11 +66,11 @@ public class MemberCoverageTests
         var display = Members(Sample).Select(m => m.Display).ToList();
 
         Assert.Contains("Account.ctor", display);
-        Assert.Contains("Account.Balance.get", display);   // computed property getter
-        Assert.Contains("Account.Status.get", display);    // body-bearing accessor
-        Assert.Contains("Account.Withdraw", display);      // ordinary method
-        Assert.Contains("Account.Clamp (local)", display); // local function
-        Assert.Contains("Account.op_Addition", display);   // user-defined operator
+        Assert.Contains("Account.Balance.get", display);
+        Assert.Contains("Account.Status.get", display);
+        Assert.Contains("Account.Withdraw", display);
+        Assert.Contains("Account.Clamp (local)", display);
+        Assert.Contains("Account.op_Addition", display);
     }
 
     [Fact]
@@ -86,13 +86,11 @@ public class MemberCoverageTests
     {
         var members = Members(Sample);
 
-        // The local function `Clamp` has its own `if` (complexity 2); the parent `Withdraw` has none (1).
         var clamp = members.Single(m => m.Display == "Account.Clamp (local)");
         var withdraw = members.Single(m => m.Display == "Account.Withdraw");
         Assert.Equal(2, clamp.Complexity);
         Assert.Equal(1, withdraw.Complexity);
 
-        // The constructor's guard is counted (complexity 2).
         var ctor = members.Single(m => m.Display == "Account.ctor");
         Assert.Equal(2, ctor.Complexity);
     }
@@ -101,7 +99,6 @@ public class MemberCoverageTests
     public void Local_function_id_is_qualified_by_its_enclosing_method()
     {
         var clamp = Members(Sample).Single(m => m.Display == "Account.Clamp (local)");
-        // Qualified by the enclosing method so two same-named locals can't collide.
         Assert.Contains("Withdraw", clamp.Id);
         Assert.Contains("/Clamp(", clamp.Id);
     }
@@ -109,19 +106,16 @@ public class MemberCoverageTests
     [Fact]
     public void Blast_radius_syntactic_fallback_matches_only_when_unambiguous()
     {
-        // The resolution-free fallback that recovers blast-radius on unbuilt code must NOT guess: it only
-        // attributes a call when exactly one in-set method matches the (name, arity), never for an
-        // overloaded/duplicated name, and never to itself.
         var index = new Dictionary<(string, int), List<string>>
         {
-            [("Twice", 1)] = new() { "H.Twice(int)" },                  // unique
-            [("Add", 1)] = new() { "A.Add(int)", "B.Add(int)" },        // ambiguous across two types
+            [("Twice", 1)] = new() { "H.Twice(int)" },
+            [("Add", 1)] = new() { "A.Add(int)", "B.Add(int)" },
         };
 
         Assert.Equal("H.Twice(int)", CSharpAdapter.UniqueCalleeByName(index, "Twice", 1, "caller"));
-        Assert.Null(CSharpAdapter.UniqueCalleeByName(index, "Add", 1, "caller"));         // ambiguous → refuse
-        Assert.Null(CSharpAdapter.UniqueCalleeByName(index, "Twice", 1, "H.Twice(int)")); // self → refuse
-        Assert.Null(CSharpAdapter.UniqueCalleeByName(index, "Twice", 2, "caller"));       // arity mismatch
-        Assert.Null(CSharpAdapter.UniqueCalleeByName(index, "Missing", 0, "caller"));     // not in set
+        Assert.Null(CSharpAdapter.UniqueCalleeByName(index, "Add", 1, "caller"));
+        Assert.Null(CSharpAdapter.UniqueCalleeByName(index, "Twice", 1, "H.Twice(int)"));
+        Assert.Null(CSharpAdapter.UniqueCalleeByName(index, "Twice", 2, "caller"));
+        Assert.Null(CSharpAdapter.UniqueCalleeByName(index, "Missing", 0, "caller"));
     }
 }

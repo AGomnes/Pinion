@@ -89,7 +89,7 @@ internal static class SeamCommand
                 return 1;
             }
 
-            foreach (var e in errors) Console.Error.WriteLine(e); // e.g. the "no buildable project" note
+            foreach (var e in errors) Console.Error.WriteLine(e);
             Console.Out.WriteLine($"✓ Seamed {methodCount} method(s) in {result.Plans.Count} file(s); build OK.");
             Console.Out.WriteLine("Next: lock the deterministic overloads as golden masters:");
             Console.Out.WriteLine($"  pinion generate \"{path}\" -p <test-project> --target <method>");

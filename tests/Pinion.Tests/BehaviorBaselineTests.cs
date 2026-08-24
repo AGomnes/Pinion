@@ -19,8 +19,8 @@ public class BehaviorBaselineTests
         int accepted = BehaviorBaseline.Accept(new[] { entry });
 
         Assert.Equal(1, accepted);
-        Assert.Equal("new behavior", File.ReadAllText(verified)); // current output is now the golden master
-        Assert.False(File.Exists(received));                      // received consumed
+        Assert.Equal("new behavior", File.ReadAllText(verified));
+        Assert.False(File.Exists(received));
     }
 
     [Fact]

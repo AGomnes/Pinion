@@ -41,8 +41,6 @@ public class VbGenerateEndToEndTests
             foreach (var r in results)
                 Assert.True(r.Success, $"{r.Unit.DisplayName} did not characterize: {string.Join(" | ", r.Diagnostics)}");
 
-            // The golden master must hold REAL VB behavior: 9999 * 0.19 ("DE") = 1899.81 — an input row
-            // built from constants mined out of the VB Select Case / threshold.
             var vat = results.Single(r => r.Unit.DisplayName == "InvoiceService.CalculateVat");
             string snapshot = await File.ReadAllTextAsync(vat.SnapshotPath!);
             Assert.True(snapshot.Contains("1899.81"), "expected the 9999×0.19 (DE) row — snapshot:\n" + snapshot);

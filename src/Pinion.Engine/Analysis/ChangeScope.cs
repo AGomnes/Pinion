@@ -19,16 +19,14 @@ public static class ChangeScope
         if (changed.Count == 0) return Array.Empty<CodeUnit>();
 
         var byId = new Dictionary<string, CodeUnit>(StringComparer.Ordinal);
-        foreach (var u in units) byId[u.Id] = u; // last wins; ids are unique in a single analysis
+        foreach (var u in units) byId[u.Id] = u;
 
-        // Seed: every unit declared in a changed file.
         var affected = new HashSet<string>(StringComparer.Ordinal);
         var queue = new Queue<CodeUnit>();
         foreach (var u in units)
             if (changed.Contains(NormalizePath(u.FilePath)) && affected.Add(u.Id))
                 queue.Enqueue(u);
 
-        // Walk callers upward: if a changed method's output moves, its callers' behavior can too.
         while (queue.Count > 0)
         {
             var u = queue.Dequeue();

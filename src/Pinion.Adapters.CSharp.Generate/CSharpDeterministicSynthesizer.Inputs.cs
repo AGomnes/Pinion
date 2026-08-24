@@ -1,4 +1,4 @@
-﻿using System.Globalization;
+using System.Globalization;
 using CsCheck;
 using Microsoft.CodeAnalysis;
 
@@ -36,7 +36,7 @@ internal sealed partial class CSharpDeterministicSynthesizer
         }
 
         var (stream, state) = SeedFrom(seedKey);
-        var pcg = new PCG(stream, state); // two-arg ctor = fully seeded (single-arg seeds state from time)
+        var pcg = new PCG(stream, state);
         var seen = new HashSet<string>(rows.Select(r => string.Join(RowKeySep, r)));
         for (int k = 0; k < MaxSampleRows; k++)
         {
@@ -73,7 +73,6 @@ internal sealed partial class CSharpDeterministicSynthesizer
             case SpecialType.System_Boolean:
                 return Gen.Bool.Select(v => v ? "true" : "false");
             default:
-                // string / enum / char / object / smaller ints: pick among the already-safe candidates.
                 return Gen.OneOfConst(candidates.ToArray());
         }
     }
@@ -84,8 +83,6 @@ internal sealed partial class CSharpDeterministicSynthesizer
         return (BitConverter.ToUInt32(h, 0) | 1u, BitConverter.ToUInt64(h, 4));
     }
 
-    // Ranges that span the mined branch boundaries on both sides (and always include positive values
-    // so guards like `amount > 0` / `daysLate > 0` are cleared by some samples).
     private static (int, int) IntRange(Mined mined)
     {
         var xs = mined.Ints.Where(v => v is > int.MinValue and < int.MaxValue).Select(v => (int)v).ToList();
@@ -103,12 +100,10 @@ internal sealed partial class CSharpDeterministicSynthesizer
 
     private static (double, double) DoubleRange(Mined mined)
     {
-        // Exclude NaN/±Infinity: they poison Max (Math.Max(x, NaN) == NaN) and can't bound a sample range.
         double mx = Math.Min(mined.Doubles.Where(double.IsFinite).DefaultIfEmpty(0).Max(), 1_000_000);
         return (-10, Math.Max(10_000, mx * 2 + 100));
     }
 
-    // String parameters carry the most guard structure, so allow a few more candidates than the generic cap.
     private const int StringCandidateCap = 10;
 
     /// <summary>
@@ -130,8 +125,8 @@ internal sealed partial class CSharpDeterministicSynthesizer
         }
 
         if (values.Count == 0)
-            values.Add(Quote(RichString(GuardLength(mined)))); // no guards found — the simple rich witness
-        values.Add("\"12345\"");                                // numeric — reaches int.TryParse/Parse branches
+            values.Add(Quote(RichString(GuardLength(mined))));
+        values.Add("\"12345\"");
         foreach (var s in mined.Strings) values.Add(Quote(s));
         values.Add("\"\""); values.Add("null");
 
@@ -147,11 +142,8 @@ internal sealed partial class CSharpDeterministicSynthesizer
         switch (t.SpecialType)
         {
             case SpecialType.System_String:
-                // A "rich" alphanumeric string long enough to clear length/letter/digit guards, so
-                // inputs actually get PAST validation into the real logic (the #1 coverage gap).
-                // Length derives from the method's own length-comparison constants.
                 values.Add(Quote(RichString(GuardLength(mined))));
-                values.Add("\"12345\""); // numeric — reaches int.TryParse/Parse success branches
+                values.Add("\"12345\"");
                 foreach (var s in mined.Strings) values.Add(Quote(s));
                 values.Add("\"\""); values.Add("null");
                 break;
@@ -179,10 +171,6 @@ internal sealed partial class CSharpDeterministicSynthesizer
                 break;
 
             case SpecialType.System_Boolean:
-                // false first: gate-like flags (isExempt, skipValidation, dryRun) short-circuit the whole
-                // method when true, and the one-hot base value is held across EVERY other row — a true
-                // base starves all the mined-constant rows (found generating for VB CalculateVat, where
-                // every outcome was the isExempt early-return).
                 values.Add("false"); values.Add("true");
                 break;
 
@@ -193,23 +181,21 @@ internal sealed partial class CSharpDeterministicSynthesizer
             default:
                 if (KnownFrameworkValue(t) is { } fw)
                 {
-                    values.Add(fw); // IFormatProvider→InvariantCulture, IComparer<T>→Comparer<T>.Default, …
+                    values.Add(fw);
                 }
                 else if (t.TypeKind == TypeKind.Enum)
                 {
-                    values.AddRange(EnumMembers(t)); // real enum members, not default(0)
+                    values.AddRange(EnumMembers(t));
                 }
                 else if (ElementType(t) is { } elem)
                 {
-                    // Collection: one-element values, each holding a different constructed element, so
-                    // branches that test the element's FIELDS (e.g. line.Quantity >= 100) get reached.
                     foreach (var e in ElementCandidates(elem, mined)) values.Add(CollectionLiteral(t, e));
                 }
                 else if (t is INamedTypeSymbol nt && AccessibleCtor(nt) is not null)
                 {
                     values.AddRange(ConstructionVariants(nt, mined));
                 }
-                if (values.Count == 0) values.Add(BuildValue(t, 0)); // default fallback
+                if (values.Count == 0) values.Add(BuildValue(t, 0));
                 break;
         }
 
@@ -234,8 +220,6 @@ internal sealed partial class CSharpDeterministicSynthesizer
         string fq = Fq(type);
         var ctor = AccessibleCtor(type);
         if (ctor is null) return new() { $"default({fq})!" };
-        // Object initializer for any `required` member the ctor doesn't set (else CS9035). Suffixed to
-        // every `new T(...)` below so the constructed value compiles regardless of the ctor chosen.
         string init = RequiredInitializer(type, ctor, mined);
         if (ctor.Parameters.Length == 0) return new() { $"new {fq}(){init}" };
 
@@ -244,8 +228,6 @@ internal sealed partial class CSharpDeterministicSynthesizer
 
         var variants = new List<string> { $"new {fq}({string.Join(", ", baseArgs)}){init}" };
         var seen = new HashSet<string> { string.Join("|", baseArgs) };
-        // Round-robin across the ctor args (not first-param-first) so EVERY field gets varied within
-        // the budget — otherwise one many-valued field (e.g. a string Sku) starves the others.
         for (int j = 1; variants.Count < MaxObjectVariants; j++)
         {
             bool progressed = false;
@@ -340,7 +322,7 @@ internal sealed partial class CSharpDeterministicSynthesizer
             default:
                 if (KnownFrameworkValue(t) is { } fw) v.Add(fw);
                 else if (t.TypeKind == TypeKind.Enum) v.AddRange(EnumMembers(t));
-                else v.Add(BuildValue(t, 1)); // nested object/collection: single, depth-bounded
+                else v.Add(BuildValue(t, 1));
                 break;
         }
         return v.Distinct().Take(MaxCandidatesPerParam).ToList();
@@ -368,8 +350,6 @@ internal sealed partial class CSharpDeterministicSynthesizer
         into.Add(fmt(v - 1)); into.Add(fmt(v)); into.Add(fmt(v + 1));
     }
 
-    // A length that clears a typical lower-bound length guard: the smallest plausible length
-    // constant the method compares against (8..256), else a sensible default. Capped for readability.
     private static int GuardLength(Mined mined) =>
         Math.Min(64, mined.Ints.Where(i => i is >= 8 and <= 256).Select(i => (int)i).DefaultIfEmpty(20).Min());
 
@@ -390,7 +370,6 @@ internal sealed partial class CSharpDeterministicSynthesizer
     /// </summary>
     private static string? KnownFrameworkValue(ITypeSymbol type)
     {
-        // Generic strategy interfaces → the BCL default comparer for the element type.
         if (type is INamedTypeSymbol { IsGenericType: true } g && g.TypeArguments.Length == 1)
         {
             string arg = Fq(g.TypeArguments[0]);
@@ -412,8 +391,6 @@ internal sealed partial class CSharpDeterministicSynthesizer
             "global::System.IO.TextWriter" => "global::System.IO.TextWriter.Null",
             "global::System.IO.TextReader" => "global::System.IO.TextReader.Null",
             "global::System.IO.Stream" => "global::System.IO.Stream.Null",
-            // Ardalis.GuardClauses — extremely common in real .NET business code; its guard extension
-            // methods take IGuardClause, whose canonical entry-point singleton is `Guard.Against`.
             "global::Ardalis.GuardClauses.IGuardClause" => "global::Ardalis.GuardClauses.Guard.Against",
             _ => null,
         };
@@ -426,14 +403,12 @@ internal sealed partial class CSharpDeterministicSynthesizer
 
     private static string FmtDecimal(decimal v) => v.ToString(CultureInfo.InvariantCulture) + "m";
 
-    // NaN/±Infinity have no numeric literal form ("NaNd" won't compile) — emit the named constant instead.
     private static string FmtDouble(double v) =>
         double.IsNaN(v) ? "double.NaN"
         : double.IsPositiveInfinity(v) ? "double.PositiveInfinity"
         : double.IsNegativeInfinity(v) ? "double.NegativeInfinity"
         : v.ToString("R", CultureInfo.InvariantCulture) + "d";
 
-    // A `double` literal won't implicitly convert to `float` (CS0664), so float inputs need the `f` suffix.
     private static string FmtFloat(double v)
     {
         float f = (float)v;
@@ -453,11 +428,6 @@ internal sealed partial class CSharpDeterministicSynthesizer
             return $"new {fq}({string.Join(", ", args)}){RequiredInitializer(type, ctor, new Mined())}";
         }
 
-        // No public constructor — the idiomatic real-world case for value/façade types (NodaTime's
-        // `LocalDatePattern.Iso`, `DateTimeZone.Utc`, `TzdbDateTimeZoneSource.Default`) that hide their
-        // ctor behind a static factory. Without this the receiver is `default!` (null) and every captured
-        // outcome is just a NullReferenceException — locking in nothing. Recover a real instance from a
-        // public static factory member instead.
         return StaticFactory(type) ?? $"default({fq})!";
     }
 
@@ -497,11 +467,6 @@ internal sealed partial class CSharpDeterministicSynthesizer
         return null;
     }
 
-    // ---- Interface stub synthesis ----
-    // For a service interface we can't otherwise fill (IRepository<T>, IWorkContext, …), emit a minimal
-    // class implementing it with trivial members, so the unit-under-test runs with a real no-op
-    // collaborator. The captured behaviour is "behaviour given default collaborators" — a partial but
-    // honest characterization, and far better than an immediate NRE on a null dependency.
 
     /// <summary>An interface implementable with trivial members and referenceable from the test
     /// assembly. Skips (→ falls back to default!) anything with generic methods, ref/out params,
@@ -509,14 +474,7 @@ internal sealed partial class CSharpDeterministicSynthesizer
     internal static bool CanStub(INamedTypeSymbol iface)
     {
         if (iface.TypeKind != TypeKind.Interface || !IsPubliclyAccessible(iface)) return false;
-        // An inherited interface that didn't resolve (an error type — e.g. it lives in a NuGet package that
-        // didn't restore on a source scan, like Ardalis `IRepositoryBase<T>`) hides its members, so the stub
-        // would be missing them and fail to compile (CS0535) against the real assembly. Fall back to default!.
         if (iface.AllInterfaces.Any(i => i.TypeKind == TypeKind.Error)) return false;
-        // EmitStub writes one implementation per distinct member display string. If two required members
-        // (from different inherited interfaces) render identically but aren't actually one implementation —
-        // the classic case is IEnumerable<T> : IEnumerable, whose two GetEnumerator()s differ only by return
-        // type — one collapses away and the other is left unimplemented (CS0535). Can't stub: fall back to default!.
         var signatures = new HashSet<string>(StringComparer.Ordinal);
         foreach (var m in StubMembers(iface))
         {
@@ -638,9 +596,6 @@ internal sealed partial class CSharpDeterministicSynthesizer
     {
         type = Unwrap(type);
 
-        // Common BCL abstractions have a real, substitutable default value — use it rather than
-        // default(T)! (null), which would just capture a NullReferenceException. IFormatProvider in
-        // particular dominates real-world `Format`/`ToString`/parse overloads.
         if (KnownFrameworkValue(type) is { } known) return known;
 
         var first = Unwrap(type).SpecialType switch
@@ -673,9 +628,6 @@ internal sealed partial class CSharpDeterministicSynthesizer
             }
         }
 
-        // Interface dependency we can't otherwise construct (the dominant residue on real DI-heavy
-        // service layers): a minimal stub, so the unit runs with a real no-op collaborator instead of
-        // NREing on a null. Depth-bounded so stubs never nest.
         if (depth <= 2 && type is INamedTypeSymbol { TypeKind: TypeKind.Interface } iface && CanStub(iface))
             return StubInstance(iface);
 
@@ -715,10 +667,10 @@ internal sealed partial class CSharpDeterministicSynthesizer
             string fq = Fq(named);
             bool hasAdd = named.GetMembers("Add").OfType<IMethodSymbol>()
                 .Any(m => m.Parameters.Length == 1 && m.DeclaredAccessibility == Accessibility.Public);
-            return hasAdd ? $"new {fq} {{ {element} }}" : $"new {fq}()"; // empty when no Add (compiles; drops the element)
+            return hasAdd ? $"new {fq} {{ {element} }}" : $"new {fq}()";
         }
 
-        return $"new[] {{ {element} }}"; // best effort for an interface we didn't enumerate
+        return $"new[] {{ {element} }}";
     }
 
     private static bool IsArrayCompatibleInterface(ITypeSymbol t) =>

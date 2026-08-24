@@ -38,10 +38,6 @@ public sealed class TestGenerator
 
     public async Task<GenerationResult> GenerateAsync(CodeUnit unit, CancellationToken ct)
     {
-        // Never-send gate — the outbound security boundary. Checked BEFORE any context is even
-        // extracted, so a never-send unit's source is never read into an outbound payload, never
-        // previewed by --dry-run, and never sent. This is the authoritative enforcement point:
-        // any caller of the pipeline is bound by it, not just the CLI.
         if (_neverSend.Count > 0 && TargetGuards.IsNeverSend(unit, _neverSend))
         {
             _log?.Invoke($"[no-send] {unit.DisplayName} matches a never-send rule — its source will NOT leave the machine. " +
@@ -52,8 +48,6 @@ public sealed class TestGenerator
 
         var context = await _adapter.ExtractContextAsync(unit, ct).ConfigureAwait(false);
 
-        // Scrub everything that would leave the machine. The system prompt is static, but
-        // scrub it too so the dry-run output is the literal outbound payload.
         var scrubbedSystem = SecretScrubber.Scrub(PromptBuilder.System());
         var scrubbedUser = SecretScrubber.Scrub(PromptBuilder.InitialUser(context));
         if (scrubbedUser.Redactions > 0)
@@ -77,7 +71,6 @@ public sealed class TestGenerator
         {
             ct.ThrowIfCancellationRequested();
 
-            // Hard cost guard: never start another paid call once the ceiling is hit.
             if (SpendCeilingReached)
             {
                 _log?.Invoke($"[budget] spend ceiling ${_maxSpendUsd:0.00} reached — stopping before {unit.DisplayName}.");
@@ -87,7 +80,6 @@ public sealed class TestGenerator
 
             _log?.Invoke($"[generate] {unit.DisplayName}: attempt {attempt}/{maxTries} via {_llm.Name} ({_options.Model}).");
 
-            // Snapshot the conversation so each request is independent of later repair turns.
             var request = new LlmRequest(_options.Model, scrubbedSystem.Text, messages.ToList(), _options.MaxTokens);
             var response = await _llm.CompleteAsync(request, ct).ConfigureAwait(false);
             _meter?.Add(_options.Model, response.Usage);
@@ -106,7 +98,6 @@ public sealed class TestGenerator
             lastDiagnostics = exec.Diagnostics;
             _log?.Invoke($"[generate] {unit.DisplayName}: attempt {attempt} failed ({exec.Diagnostics.Count} diagnostic(s)).");
 
-            // Feed the error back for repair (unless we're out of tries).
             if (attempt < maxTries)
             {
                 messages.Add(LlmMessage.Assistant(response.Text));
@@ -128,7 +119,6 @@ public sealed class TestGenerator
         var fenced = Regex.Match(text, "```(?:csharp|cs)?\\s*\\n(?<code>[\\s\\S]*?)```", RegexOptions.IgnoreCase);
         if (fenced.Success) return fenced.Groups["code"].Value.Trim();
 
-        // No fence — skip prose lines until the first that looks like the start of a C# file.
         var lines = text.Replace("\r\n", "\n").Split('\n');
         int start = Array.FindIndex(lines, IsCodeStart);
         return (start <= 0 ? text : string.Join("\n", lines[start..])).Trim();

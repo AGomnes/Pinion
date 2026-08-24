@@ -65,7 +65,6 @@ public class RiskScorerTests
         var weights = RiskWeights.Default;
         var norm = RiskNormalization.Default;
 
-        // Way past every cap: each normalized signal should saturate at 1.0.
         var score = RiskScorer.Score(
             Unit(complexity: 999, lineCount: 9999, hasTests: false,
                  callers: Enumerable.Range(0, 999).Select(i => $"c{i}").ToArray(),

@@ -15,7 +15,7 @@ public enum BehaviorChange
 public sealed record BehaviorDiffEntry(
     string Name,
     BehaviorChange Status,
-    string? Diff,            // unified diff (− was / + now) when Changed; null when Identical
+    string? Diff,
     string VerifiedPath,
     string? ReceivedPath);
 

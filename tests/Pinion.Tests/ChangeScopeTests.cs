@@ -21,10 +21,10 @@ public class ChangeScopeTests
     {
         var units = new[]
         {
-            U("a", F1),            // changed file, nobody calls it
-            U("b", F1, "c"),       // changed file, called by c
-            U("c", F2),            // other file but calls into b → affected
-            U("e", F2),            // other file, unrelated → NOT affected
+            U("a", F1),
+            U("b", F1, "c"),
+            U("c", F2),
+            U("e", F2),
         };
 
         var affected = ChangeScope.Affected(units, new[] { F1 }).Select(u => u.Id).ToHashSet();
@@ -38,15 +38,15 @@ public class ChangeScopeTests
     {
         var units = new[]
         {
-            U("b", F1, "c"),       // changed
-            U("c", F2, "d"),       // calls b
-            U("d", F2),            // calls c → transitively affected
-            U("e", F2),            // unrelated
+            U("b", F1, "c"),
+            U("c", F2, "d"),
+            U("d", F2),
+            U("e", F2),
         };
 
         var affected = ChangeScope.Affected(units, new[] { F1 }).Select(u => u.Id).ToHashSet();
 
-        Assert.Contains("d", affected);        // reached via b → c → d
+        Assert.Contains("d", affected);
         Assert.DoesNotContain("e", affected);
     }
 
@@ -73,6 +73,6 @@ public class CharacterizationNamingTests
     {
         string a = CharacterizationNaming.TestClassName("C.M", "Ns.C.M(int)");
         string b = CharacterizationNaming.TestClassName("C.M", "Ns.C.M(string)");
-        Assert.NotEqual(a, b);                 // same display name, different id → different class
+        Assert.NotEqual(a, b);
     }
 }

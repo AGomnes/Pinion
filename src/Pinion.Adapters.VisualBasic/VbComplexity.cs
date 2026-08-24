@@ -29,13 +29,13 @@ internal static class VbComplexity
                 case ForEachBlockSyntax:
                 case DoLoopBlockSyntax:
                 case CatchBlockSyntax:
-                case CatchFilterClauseSyntax:               // Catch … When (guard) — a second branch
-                case TernaryConditionalExpressionSyntax:    // If(cond, a, b)
-                case BinaryConditionalExpressionSyntax:     // If(a, b) — null-coalescing
+                case CatchFilterClauseSyntax:
+                case TernaryConditionalExpressionSyntax:
+                case BinaryConditionalExpressionSyntax:
                     decisions++;
                     break;
 
-                case CaseBlockSyntax cb when !cb.IsKind(SyntaxKind.CaseElseBlock): // each `Case x` (not `Case Else`)
+                case CaseBlockSyntax cb when !cb.IsKind(SyntaxKind.CaseElseBlock):
                     decisions++;
                     break;
 

@@ -40,9 +40,6 @@ internal static class ReportOutput
 /// </summary>
 internal static class BrowserLauncher
 {
-    // Only ever open a report artifact Pinion itself writes. The Windows path uses the shell handler
-    // (UseShellExecute), so without this allowlist a crafted --out could make `--open` launch an
-    // executable/script/shortcut rather than display a file.
     private static readonly HashSet<string> ReportExtensions =
         new(StringComparer.OrdinalIgnoreCase) { ".html", ".htm", ".md", ".json", ".txt" };
 
@@ -70,7 +67,6 @@ internal static class BrowserLauncher
             else if (OperatingSystem.IsMacOS())
                 Process.Start(new ProcessStartInfo("open") { ArgumentList = { full }, UseShellExecute = false });
             else
-                // ArgumentList (not a joined string) so a path beginning with '-' can't be read as an option.
                 Process.Start(new ProcessStartInfo("xdg-open") { ArgumentList = { full }, UseShellExecute = false });
             return true;
         }

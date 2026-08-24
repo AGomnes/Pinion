@@ -43,14 +43,12 @@ internal static class VbSymbols
         return string.IsNullOrEmpty(typeName) ? name : $"{typeName}.{name}";
     }
 
-    // "InvoiceService.CalculateVat", "Cart.ctor", "Order.Total.get" — friendly report-row labels.
-    // Mirrors the C# adapter's RoslynSymbols.MemberLabel so VB property/operator members read the same.
     private static string MemberLabel(IMethodSymbol method) => method.MethodKind switch
     {
         MethodKind.Constructor or MethodKind.StaticConstructor => "ctor",
         MethodKind.PropertyGet => AssociatedName(method) + ".get",
         MethodKind.PropertySet => AssociatedName(method) + ".set",
-        _ => method.Name, // ordinary Sub/Function, user-defined operators, conversions
+        _ => method.Name,
     };
 
     private static string AssociatedName(IMethodSymbol accessor) => accessor.AssociatedSymbol?.Name ?? accessor.Name;
