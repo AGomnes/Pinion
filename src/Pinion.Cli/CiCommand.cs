@@ -30,7 +30,7 @@ internal static class CiCommand
         };
         var withProveOption = new Option<bool>("--with-prove")
         {
-            Description = "Include the paid mutation-score step (needs dotnet-stryker + a PINION_LICENSE secret).",
+            Description = "Include the mutation-score step (needs dotnet-stryker).",
         };
         var forceOption = new Option<bool>("--force") { Description = "Overwrite the workflow file if it already exists." };
         var stdoutOption = new Option<bool>("--stdout") { Description = "Print the workflow to stdout instead of writing a file." };

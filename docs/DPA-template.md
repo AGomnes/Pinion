@@ -18,7 +18,7 @@ Controller is the controller; the Processor is the processor.
 Generating and verifying characterization tests for the Controller's .NET source code. Pinion runs in
 the Controller's environment; source code is read locally. The only data that leaves the Controller's
 environment is per-method code context sent to the configured AI provider when the Controller opts into
-the AI tier — and only if the Controller chooses a non-local provider. See `TRUST.md`.
+an AI provider — and only if the Controller chooses a non-local one. See `TRUST.md`.
 
 ## 3. Duration
 For the term of the underlying agreement, and any wind-down period needed to return or delete data.
@@ -32,7 +32,7 @@ For the term of the underlying agreement, and any wind-down period needed to ret
 - **Data subjects:** any individuals whose data may incidentally appear in the above.
 
 ## 5. Sub-processors
-- **[AI provider, e.g. Anthropic]** — only when the Controller enables the AI generation tier with a
+- **[AI provider, e.g. Anthropic or OpenAI]** — only when the Controller enables an AI provider with a
   non-local provider; receives per-method code context. The Controller may enable Zero Data Retention
   with the provider, and may instead run a fully local model or the deterministic (no-AI) generator so
   that **no** Sub-processor receives any data.

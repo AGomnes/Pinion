@@ -17,6 +17,7 @@ public class RepairLoopTests
         public List<LlmRequest> Requests { get; } = new();
         public ScriptedLlm(params string[] responses) => _responses = new Queue<string>(responses);
         public string Name => "scripted";
+        public string PreviewRequest(LlmRequest request) => "(test double)";
         public Task<LlmResponse> CompleteAsync(LlmRequest request, CancellationToken ct)
         {
             Requests.Add(request);

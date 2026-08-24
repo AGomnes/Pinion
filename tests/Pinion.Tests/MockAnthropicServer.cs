@@ -56,6 +56,13 @@ internal sealed class MockAnthropicServer : IDisposable
         lock (_gate) _responses.Enqueue((200, body));
     }
 
+    /// <summary>Queue a verbatim body with the given status. Used by the OpenAI-shaped tests, whose
+    /// payloads are not Anthropic Messages objects.</summary>
+    public void EnqueueRaw(int status, string body)
+    {
+        lock (_gate) _responses.Enqueue((status, body));
+    }
+
     /// <summary>Queue an API error with the given HTTP status and error type.</summary>
     public void EnqueueError(int status, string errorType = "api_error", string message = "boom")
     {

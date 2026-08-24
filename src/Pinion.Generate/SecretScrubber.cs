@@ -29,7 +29,10 @@ public static class SecretScrubber
     private static readonly Regex[] TokenShapes =
     {
         new(@"sk-ant-[A-Za-z0-9_\-]{20,}", Opts),
-        new(@"sk-[A-Za-z0-9]{20,}", Opts),
+        // Covers classic OpenAI keys (sk-XXXX) and modern project/service keys (sk-proj-XXXX,
+        // sk-svcacct-XXXX), whose internal hyphens made an [A-Za-z0-9]-only class stop at the
+        // first dash and leave the rest of the key in the payload.
+        new(@"sk-[A-Za-z0-9_\-]{20,}", Opts),
         new(@"gh[pousr]_[A-Za-z0-9]{20,}", Opts),
         new(@"xox[baprs]-[A-Za-z0-9-]{10,}", Opts),
         new(@"AKIA[0-9A-Z]{16}", RegexOptions.Compiled),

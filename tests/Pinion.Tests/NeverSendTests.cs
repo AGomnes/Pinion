@@ -20,6 +20,7 @@ public class NeverSendTests
     private sealed class TripwireLlm : ILlmClient
     {
         public string Name => "tripwire";
+        public string PreviewRequest(LlmRequest request) => "(test double)";
         public Task<LlmResponse> CompleteAsync(LlmRequest request, CancellationToken ct) =>
             throw new Xunit.Sdk.XunitException("outbound call made for a never-send unit");
     }
@@ -84,6 +85,7 @@ public class NeverSendTests
         public int Calls { get; private set; }
         public RecordingLlm(string response) => _response = response;
         public string Name => "recording";
+        public string PreviewRequest(LlmRequest request) => "(test double)";
         public Task<LlmResponse> CompleteAsync(LlmRequest request, CancellationToken ct)
         {
             Calls++;

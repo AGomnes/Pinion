@@ -3,10 +3,10 @@ using Pinion.Engine.Model;
 namespace Pinion.Generate;
 
 /// <summary>
-/// The paid-tier, language-specific surface for the `generate` pipeline. Kept separate
+/// The language-specific surface for the `generate` pipeline. Kept separate
 /// from the free <c>ILanguageAdapter</c> (analyze) so the free engine and adapters have
-/// NO compile-time dependency on the paid generation code — the dependency only ever
-/// flows paid → free.
+/// NO compile-time dependency on the generation code — the dependency only ever
+/// flows generate → analyze.
 /// </summary>
 public interface IGenerationAdapter
 {

@@ -49,6 +49,8 @@ public sealed class AnthropicClient : ILlmClient, IDisposable
 
     public string Name => "anthropic";
 
+    public string PreviewRequest(LlmRequest request) => BuildRequestJson(request);
+
     /// <summary>The exact JSON body that will be POSTed — also used by `--dry-run` so the
     /// user sees precisely what bytes would leave the machine.</summary>
     public static string BuildRequestJson(LlmRequest request)
@@ -94,29 +96,13 @@ public sealed class AnthropicClient : ILlmClient, IDisposable
             int status = (int)resp.StatusCode;
             if (attempt < MaxRetries && Array.IndexOf(RetryableStatuses, status) >= 0)
             {
-                await Task.Delay(RetryDelay(resp, attempt), ct).ConfigureAwait(false);
+                await Task.Delay(RetryPolicy.Delay(resp, attempt, RetryBaseDelay), ct).ConfigureAwait(false);
                 continue;
             }
 
             throw new LlmApiException(status, $"Anthropic API {status}: {Truncate(responseBody, 500)}");
         }
     }
-
-    /// <summary>Honor the server's Retry-After when present, else exponential backoff + jitter, capped at 30s.</summary>
-    private TimeSpan RetryDelay(HttpResponseMessage resp, int attempt)
-    {
-        if (resp.Headers.RetryAfter is { } ra)
-        {
-            if (ra.Delta is { } d && d > TimeSpan.Zero) return Cap(d);
-            if (ra.Date is { } when && when - DateTimeOffset.UtcNow is { Ticks: > 0 } until) return Cap(until);
-        }
-        if (RetryBaseDelay <= TimeSpan.Zero) return TimeSpan.Zero;
-        double seconds = RetryBaseDelay.TotalSeconds * Math.Pow(2, attempt);
-        double jitter = Random.Shared.NextDouble() * 0.5;
-        return Cap(TimeSpan.FromSeconds(seconds + jitter));
-    }
-
-    private static TimeSpan Cap(TimeSpan t) => t > TimeSpan.FromSeconds(30) ? TimeSpan.FromSeconds(30) : t;
 
     internal static LlmResponse Parse(string responseBody)
     {

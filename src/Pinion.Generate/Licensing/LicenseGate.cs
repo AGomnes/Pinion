@@ -3,7 +3,7 @@ using System.Security.Cryptography;
 namespace Pinion.Generate.Licensing;
 
 /// <summary>
-/// Verifies a Pinion paid-tier license entirely offline against an embedded public key.
+/// Verifies a Pinion license entirely offline against an embedded public key. Dormant: nothing is gated.
 /// No network call — verification on a fully air-gapped machine works, which is the whole
 /// point: the license check must not contradict the product's "code stays local" promise.
 /// </summary>

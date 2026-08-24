@@ -23,16 +23,17 @@ changelog unless you prefer otherwise.
 ## What leaves your machine
 
 The short version: **by default, nothing.** Pinion makes no network request unless you explicitly pass
-`--provider anthropic`, which is never the default and is never set for you. A set `ANTHROPIC_API_KEY`
-does not enable anything by itself: the variable is read only inside the branch that flag selects, so a
-CI runner or shared machine with a key in its environment is unaffected.
+an AI provider (`--provider anthropic`, `openai`, or `azure-openai`). None is the default and none is
+ever selected for you. A key in the environment does not enable anything by itself: each key variable
+is read only inside the branch its own provider selects, so a CI runner or shared machine with a key in
+its environment is unaffected.
 
 | Command | Network |
 |---|---|
 | `analyze`, `verify`, `accept`, `seam`, `ci`, `init-tests` | none |
 | `generate` (default, `--provider deterministic`) | none |
 | `prove` | none by Pinion; Stryker.NET may restore NuGet packages |
-| `generate --provider anthropic` (opt-in, never the default) | per-method context to the Anthropic API only |
+| `generate --provider anthropic|openai|azure-openai` (opt-in, never the default) | per-method context to that one provider only |
 
 There is no telemetry, no analytics, no license activation call, and no update check. The
 deterministic path has no HTTP client in it at all. [TRUST.md](TRUST.md) documents this per command

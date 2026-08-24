@@ -30,6 +30,20 @@ public class SecretScrubberTests
         Assert.Contains("[REDACTED]", r.Text);
     }
 
+    [Theory]
+    // Modern OpenAI keys carry internal hyphens. An [A-Za-z0-9]-only class stopped at the dash after
+    // "proj" and left the rest of the key in the outbound payload, so these shapes are pinned.
+    [InlineData("sk-proj-aBcDeFgHiJkLmNoPqRsTuVwXyZ0123456789")]
+    [InlineData("sk-svcacct-aBcDeFgHiJkLmNoPqRsTuVwXyZ0123456789")]
+    [InlineData("sk-aBcDeFgHiJkLmNoPqRsTuVwXyZ0123456789")]
+    public void Redacts_openai_key_shapes(string key)
+    {
+        var r = SecretScrubber.Scrub($"var client = new OpenAI(\"{key}\");");
+        Assert.DoesNotContain("aBcDeFgHiJkLmNoPqRsTuVwXyZ", r.Text);
+        Assert.Contains("[REDACTED]", r.Text);
+        Assert.True(r.Redactions > 0);
+    }
+
     [Fact]
     public void Leaves_ordinary_code_untouched()
     {

@@ -8,7 +8,7 @@ using Pinion.Generate;
 
 namespace Pinion.Adapters.CSharp.Generate;
 
-/// <summary>The C# implementation of the paid <see cref="IGenerationAdapter"/> surface.</summary>
+/// <summary>The C# implementation of the <see cref="IGenerationAdapter"/> surface.</summary>
 public sealed class CSharpTestGenerator : IGenerationAdapter, IDisposable
 {
     private string? _testProjectPath;

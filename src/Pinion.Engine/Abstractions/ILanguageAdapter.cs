@@ -9,8 +9,8 @@ namespace Pinion.Engine.Abstractions;
 /// </summary>
 /// <remarks>
 /// This is the ANALYZE surface. The `generate` surface is a separate interface
-/// (<c>Pinion.Generate.IGenerationAdapter</c>) in the paid assembly, so the free engine
-/// has no compile-time dependency on the paid code.
+/// (<c>Pinion.Generate.IGenerationAdapter</c>) in the generate assembly, so the analyze engine
+/// has no compile-time dependency on the generation code.
 /// </remarks>
 public interface ILanguageAdapter
 {

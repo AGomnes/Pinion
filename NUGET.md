@@ -29,7 +29,8 @@ team understands any more. The practice is Michael Feathers' **characterization 
 
 The `analyze` path and the default deterministic `generate` path make **zero network calls**. There
 is no HTTP client in them at all. No telemetry, no analytics, no license activation, no update check.
-AI is opt-in (`--provider anthropic`), off by default, and never required.
+AI is opt-in (`--provider anthropic`, `openai`, or `azure-openai`, including local OpenAI-compatible
+servers via `--base-url`), off by default, and never required.
 
 That matters in regulated finance, defense, healthcare, and anywhere air-gapped: the places still
 running the oldest .NET, and the ones cloud-only migration tooling cannot serve.

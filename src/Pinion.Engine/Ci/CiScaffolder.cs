@@ -51,14 +51,12 @@ public static class CiScaffolder
     {
         string prove = withProve
             ? "\n" +
-              "      # Mutation score (paid `prove` tier) — how many regressions the tests actually catch.\n" +
-              "      # Needs the dotnet-stryker tool and a PINION_LICENSE repo secret.\n" +
+              "      # Mutation score — how many regressions these tests actually catch.\n" +
+              "      # Needs the dotnet-stryker tool.\n" +
               "      - name: Pinion mutation score\n" +
               "        run: |\n" +
               "          dotnet tool install --global dotnet-stryker\n" +
-              $"          pinion prove -p {test}\n" +
-              "        env:\n" +
-              "          PINION_LICENSE: ${{ secrets.PINION_LICENSE }}\n"
+              $"          pinion prove -p {test}\n"
             : "";
 
         return $$"""
@@ -102,13 +100,11 @@ public static class CiScaffolder
     {
         string prove = withProve
             ? "\n" +
-              "  # Mutation score (paid `prove` tier). Needs dotnet-stryker and a PINION_LICENSE pipeline secret.\n" +
+              "  # Mutation score — how many regressions these tests actually catch. Needs dotnet-stryker.\n" +
               "  - script: |\n" +
               "      dotnet tool install --global dotnet-stryker\n" +
               $"      pinion prove -p {test}\n" +
-              "    displayName: 'Pinion mutation score'\n" +
-              "    env:\n" +
-              "      PINION_LICENSE: $(PINION_LICENSE)\n"
+              "    displayName: 'Pinion mutation score'\n"
             : "";
 
         return $$"""

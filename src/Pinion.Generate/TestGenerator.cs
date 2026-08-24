@@ -59,7 +59,7 @@ public sealed class TestGenerator
         {
             var preview = new LlmRequest(_options.Model, scrubbedSystem.Text, messages, _options.MaxTokens);
             _log?.Invoke($"[dry-run] {unit.DisplayName}: the following bytes would be sent to the model (and nothing else):");
-            _log?.Invoke(AnthropicClient.BuildRequestJson(preview));
+            _log?.Invoke(_llm.PreviewRequest(preview));
             return new GenerationResult(unit, Success: false, Attempts: 0, TestFilePath: null, SnapshotPath: null,
                 Diagnostics: new[] { "dry-run: no request sent" });
         }

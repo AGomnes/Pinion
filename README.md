@@ -49,7 +49,8 @@ a preference. Those are also the shops still running the oldest .NET.
 
 Pinion's default path makes **zero network calls**. There is no HTTP client on the deterministic
 path at all, the source is public so you can check, and [TRUST.md](TRUST.md) documents egress
-command by command. AI is opt-in (`--provider anthropic`), off by default, and never required.
+command by command. AI is opt-in (`--provider anthropic`, `openai`, or `azure-openai`), off by default,
+and never required.
 
 > **The name.** The spec's working title was *BehaviorLock*, but that name was taken. A **pinion**
 > is the small gear that meshes with a larger one to drive it safely, and Feathers calls these
@@ -65,7 +66,7 @@ pipeline that synthesizes, compiles, executes and snapshots a generated test.
 
 `analyze` · `generate` · `verify` · `accept` · `prove` · `seam` · `ci` · `quickstart` · `init-tests`
 
-C# and VB.NET. `generate` is deterministic and offline by default; the AI provider is opt-in and
+C# and VB.NET. `generate` is deterministic and offline by default; AI providers are opt-in and
 never required.
 
 Validated beyond the bundled samples on NodaTime, Humanizer, eShopOnWeb and nopCommerce
@@ -77,7 +78,7 @@ Validated beyond the bundled samples on NodaTime, Humanizer, eShopOnWeb and nopC
   `--provider anthropic` for those.
 - VB.NET targets are deterministic-only; the AI context extractor reads C# syntax.
 - Non-public methods are skipped, since a test in a separate assembly can only call public members.
-- Deferred, and needing a live API key to finish: Batch API pricing and Haiku/Sonnet model routing.
+- Deferred, and needing a live API key to finish: Batch API pricing and cheap/strong model routing.
   Both are cost optimizations for the opt-in AI path, so neither affects default use.
 
 ---
@@ -110,18 +111,18 @@ Building the package from source: `dotnet pack src/Pinion.Cli -c Release -o ./ar
 The product is split so other languages can be added later as thin adapters:
 
 ```
-ANALYZE tier (the auditable core — zero network, no AI):
+ANALYZE layer (the auditable core — zero network, no AI):
   Pinion.Engine          language-agnostic core — IR, risk scoring, domain tagging,
                          report building/rendering. Speaks ONLY the IR; NO Roslyn.
   Pinion.Adapters.CSharp the only place Roslyn lives for analyze. Produces the IR;
                          never leaks compiler types past the ILanguageAdapter boundary.
 
-GENERATE tier (test synthesis):
+GENERATE layer (test synthesis):
   Pinion.Generate              LLM client, secret scrubber, prompts, orchestrator,
                                IGenerationAdapter. References the free engine.
   Pinion.Adapters.CSharp.Generate  C# context extraction + emit + compile/run/snapshot.
 
-  Pinion.Cli                   composition root — bundles both tiers behind one CLI.
+  Pinion.Cli                   composition root — bundles both layers behind one CLI.
 ```
 
 **The layer boundary is enforced by the project graph — the dependency only ever flows
@@ -319,9 +320,9 @@ difference is where the text comes from.
 | `-p, --test-project` | — | test project to host generated tests (refs the code + xunit + VerifyXunit) |
 | `-t, --target` | — | only methods whose name/id contains this substring |
 | `--top <n>` | `1` | when no `--target`, take the top N high-risk untested methods |
-| `--provider` | `deterministic` | `deterministic` (offline, no AI — default) or `anthropic` (AI, opt-in, needs `ANTHROPIC_API_KEY`). VB.NET targets are `deterministic`-only |
-| `--model` | `claude-sonnet-4-6` | generation model (Sonnet for reasoning; Haiku is the cheap tier) |
-| `--base-url` | api.anthropic.com | override for a local Anthropic-compatible endpoint (air-gapped mode) |
+| `--provider` | `deterministic` | `deterministic` (offline, no AI — default). Opt-in AI: `anthropic`, `openai`, `azure-openai`, each needing its own key env var. Also `heuristic` (offline pipeline test). VB.NET targets are `deterministic`-only |
+| `--model` | per provider | `claude-sonnet-4-6` for `anthropic`, `gpt-4.1` for `openai`. For `azure-openai` this is your **deployment name** and is required |
+| `--base-url` | provider’s own host | point at a local/self-hosted endpoint, a gateway, or your Azure OpenAI resource. Works for air-gapped runs against Ollama, vLLM, LM Studio, etc. |
 | `--max-repairs` | `3` | compile/run repair attempts per target (AI path) |
 | `--allow-side-effects` | off | include `io`/`money`-tagged methods (see safety note below) |
 | `--exclude <pat>` | — | never run/send methods matching (substring or glob; repeatable; also reads `.pinionignore`) |
@@ -469,7 +470,7 @@ pinion ci --stdout                                     # preview without writing
 ```
 
 Supports **GitHub Actions** and **Azure DevOps** (legacy .NET shops are heavily Azure DevOps/TFS). It's
-free-tier (it only emits text), refuses to clobber an existing file without `--force`, and emits an
+offline (it only emits text), refuses to clobber an existing file without `--force`, and emits an
 editable placeholder if you don't pass `--test-project`.
 
 ## The HTML dashboard — `analyze --format html`
@@ -540,9 +541,10 @@ at [docs/EULA-draft-superseded.md](docs/EULA-draft-superseded.md) and governs no
 </details>
 
 
-**Security.** Nothing leaves your machine unless you opt in with `--provider anthropic`, which is not
-the default. Without that flag Pinion makes no network request at all. With it, the only thing that
-leaves is per-method context, through a **single, auditable** HTTP call to one endpoint. A pre-send scrubber strips
+**Security.** Nothing leaves your machine unless you opt in with an AI provider (`--provider anthropic`,
+`openai`, or `azure-openai`), none of which is the default. Without such a flag Pinion makes no network
+request at all. With one, the only thing that leaves is per-method context, through a **single,
+auditable** HTTP call to that one provider. A pre-send scrubber strips
 keys/passwords/tokens/connection-string credentials; a never-send allowlist (`--no-send` /
 `.pinionnosend`) keeps designated files/namespaces fully offline; `--dry-run` shows the literal
 payload; no telemetry. Use Anthropic Zero-Data-Retention (an org-level account setting), or
@@ -561,7 +563,7 @@ logs; error messages log response bodies only. The pre-send scrubber also redact
 from outbound source, so a key embedded in code won't reach the model either.
 
 **Setting the key (end users with the installed tool).** The key lives nowhere inside Pinion — not in
-the binary, not in a shipped config file — so you never need access to the source to use the AI tier.
+the binary, not in a shipped config file — so you never need access to the source to use an AI provider.
 It is a runtime environment variable you set in your own environment. Get a key from the
 [Anthropic Console](https://console.anthropic.com/) (*API Keys*), then set `ANTHROPIC_API_KEY` and run
 `pinion generate … --provider anthropic` in the same environment:

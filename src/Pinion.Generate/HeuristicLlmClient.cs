@@ -14,6 +14,9 @@ public sealed class HeuristicLlmClient : ILlmClient
 {
     public string Name => "heuristic";
 
+    public string PreviewRequest(LlmRequest request) =>
+        "(provider 'heuristic' is offline: no request is built and nothing is sent)";
+
     public Task<LlmResponse> CompleteAsync(LlmRequest request, CancellationToken ct)
     {
         string firstUser = request.Messages.FirstOrDefault(m => m.Role == "user")?.Content ?? "";

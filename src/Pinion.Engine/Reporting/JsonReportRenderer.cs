@@ -6,7 +6,7 @@ using Pinion.Engine.Analysis;
 namespace Pinion.Engine.Reporting;
 
 /// <summary>
-/// Renders the machine-readable report. This is the contract that drives the paid
+/// Renders the machine-readable report. This is the contract that drives the
 /// `generate` step and any future web UI, so it includes the full per-unit IR and
 /// the itemized score breakdown — nothing is hidden.
 /// </summary>

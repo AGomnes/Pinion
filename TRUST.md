@@ -5,7 +5,7 @@ your machine. Every claim here is checkable against the published source; where 
 inline.
 
 **One line:** Pinion runs entirely on your machine. The *only* thing that can ever leave is individual
-method snippets, and only when you explicitly opt into the AI tier (`generate --provider anthropic`).
+method snippets, and only when you explicitly opt into an AI provider (`generate --provider anthropic|openai|azure-openai`).
 Everything else — analysis, the default test generator, verification, mutation testing — is 100% local
 with no network access. If even per-method snippets are too much, run fully offline against a local
 model or the deterministic generator.
@@ -18,7 +18,9 @@ model or the deterministic generator.
 |---|---|---|
 | `analyze` | **No** | Nothing. Roslyn reads your code locally; the report is written to disk. |
 | `generate` *(default, `--provider deterministic`)* | **No** | Nothing. Tests are synthesized locally from the semantic model. $0, reproducible. |
-| `generate --provider anthropic` | **Yes — one endpoint** | Per-method context only (see below), to a single declared endpoint. Opt-in. |
+| `generate --provider anthropic` | **Yes — one endpoint** | Per-method context only (see below), to Anthropic. Opt-in. |
+| `generate --provider openai` | **Yes — one endpoint** | Per-method context only, to OpenAI (or whatever `--base-url` names). Opt-in. |
+| `generate --provider azure-openai` | **Yes — one endpoint** | Per-method context only, to your own Azure resource. Opt-in. |
 | `generate --provider heuristic` | **No** | Nothing. An offline stand-in used to exercise the pipeline. |
 | `verify` | **No** | Nothing. Runs the locked tests locally and diffs snapshots. |
 | `prove` | **No** | Nothing. Runs Stryker.NET mutation testing locally. |
@@ -28,28 +30,44 @@ There is **no telemetry, no analytics, no "phone home"** in any command — not 
 
 ---
 
-## The single outbound endpoint, and it is opt-in
+## The outbound endpoints, and every one is opt-in
 
-Pinion makes **no network request at all** unless you explicitly pass `--provider anthropic`. That flag
-is not the default and nothing sets it for you: the default `generate` provider is `deterministic`,
-which has no network path. With the flag absent, the code below is never reached.
+Pinion makes **no network request at all** unless you explicitly name an AI provider: `--provider
+anthropic`, `openai`, or `azure-openai`. None of them is the default and nothing selects one for you —
+the default `generate` provider is `deterministic`, which has no network path. With no such flag, the
+code below is never reached.
 
-A set `ANTHROPIC_API_KEY` changes nothing on its own. The variable is read only inside the branch that
-`--provider anthropic` selects
-([`GenerateCommand`](src/Pinion.Cli/GenerateCommand.cs)), so on a default run Pinion never reads it at
-all. The flag is the only thing that enables the outbound path, and CI runners or shared machines that
+A key sitting in the environment changes nothing on its own. `ANTHROPIC_API_KEY`, `OPENAI_API_KEY` and
+`AZURE_OPENAI_API_KEY` are each read only inside the branch their own `--provider` selects
+([`GenerateCommand`](src/Pinion.Cli/GenerateCommand.cs)), so on a default run Pinion never reads any of
+them. The flag is the only thing that enables an outbound path, and CI runners or shared machines that
 happen to have a key in the environment are unaffected.
 
-The *only* code in Pinion that makes a network request is
-[`AnthropicClient`](src/Pinion.Generate/AnthropicClient.cs): one `HTTP POST` to `/v1/messages`. You can
-verify this yourself — there is exactly one `HttpClient` in the entire `src/` tree:
+Exactly two files in Pinion can make a network request, one per AI provider, and you can list them
+yourself:
 
 ```sh
-grep -rn "HttpClient\|HttpRequestMessage\|SendAsync" src/   # → only AnthropicClient.cs
+grep -rln "new HttpClient\|\.SendAsync(" src/ --include=*.cs
+#   → src/Pinion.Generate/AnthropicClient.cs   (POST /v1/messages)
+#   → src/Pinion.Generate/OpenAiClient.cs      (POST /chat/completions)
 ```
 
-It only runs on `generate --provider anthropic`. The base URL is overridable (`--base-url`) so the same
-client can target a **local, air-gapped, Anthropic-compatible endpoint** with no change.
+(Search for the bare word `HttpClient` instead and you also hit `SeamAnalyzer`/`SeamRewriter`, where it
+appears in a *list of strings* — the resource names Pinion detects in **your** code when reporting seam
+obstacles. Those are data, not calls, which is why the command above matches construction and sending.)
+
+Each sends to one endpoint and runs only when its own `--provider` is passed:
+
+| `--provider` | Client | Key |
+|---|---|---|
+| `anthropic` | `AnthropicClient` | `ANTHROPIC_API_KEY` |
+| `openai` | `OpenAiClient` | `OPENAI_API_KEY` |
+| `azure-openai` | `OpenAiClient` (Azure auth + deployment route) | `AZURE_OPENAI_API_KEY` |
+
+Every one of them is off unless you name it. The base URL is overridable (`--base-url`) on all of them,
+so the same clients target a **local, air-gapped endpoint** — an Anthropic-compatible server, or any
+OpenAI-compatible one such as Ollama, vLLM or LM Studio — with no change and no key leaving your
+network.
 
 ### What is sent
 The minimum needed to write a characterization test for one method: **the method's source and the type
@@ -63,7 +81,7 @@ defenses enforce this, both before any byte leaves:
 
 1. **Pre-send secret scrubber** — [`SecretScrubber`](src/Pinion.Generate/SecretScrubber.cs) redacts
    secret-shaped values (password/token/key assignments, connection-string credentials, known token
-   shapes like `sk-ant-…`, AWS keys, JWTs, PEM blocks) from every outbound payload **and** from the
+   shapes like `sk-ant-…` and `sk-proj-…`, AWS keys, JWTs, PEM blocks) from every outbound payload **and** from the
    golden masters it writes to disk.
 2. **Never-send allowlist** — mark files or namespaces whose source must never be sent
    (`--no-send <glob>`, or a `.pinionnosend` file). Enforced at the outbound boundary in
@@ -74,11 +92,13 @@ defenses enforce this, both before any byte leaves:
 ### Your own API key is protected from the code Pinion runs
 `generate` *executes* the code under characterization (via `dotnet test`) to capture its behavior. Child
 processes normally inherit the parent's environment — so without care, a method under test could read
-`ANTHROPIC_API_KEY` out of its own process environment and exfiltrate it. Pinion **strips its API-key
-variables from the environment of every child process it launches**
+a provider key out of its own process environment and exfiltrate it. Pinion **strips every provider
+API-key variable (Anthropic, OpenAI, Azure OpenAI and others) from the environment of every child
+process it launches**
 ([`ProcessRunner.ScrubSecretsFrom`](src/Pinion.Adapters.CSharp/ProcessRunner.cs)), so the code it runs
-never sees the key. The key itself is read only from the environment, travels only as the `x-api-key`
-header, and is never written to disk, logged, or placed in a request body or `--dry-run` output.
+never sees the key. A key is read only from the environment, travels only as an auth header
+(`x-api-key` for Anthropic, `Authorization: Bearer` for OpenAI, `api-key` for Azure), and is never
+written to disk, logged, or placed in a request body or `--dry-run` output.
 
 ### Audit exactly what would be sent — `--dry-run`
 `generate … --dry-run` prints the *exact bytes* that would be POSTed and makes **no** network call.
@@ -105,9 +125,10 @@ For regulated or air-gapped environments, Pinion can run with **nothing leaving 
 
 - **Default deterministic generator** — `generate` (no `--provider`) synthesizes tests locally from the
   semantic model. No network, no key, $0, and reproducible.
-- **Local model endpoint** — if you want AI-assisted generation without using Anthropic's API, point the
-  client at a local Anthropic-compatible endpoint: `generate … --provider anthropic --base-url
-  http://localhost:<port>`. Same code path, your network only.
+- **Local model endpoint** — for AI-assisted generation without a third-party API, point a client at a
+  server on your own network: `--provider anthropic --base-url http://localhost:<port>` for an
+  Anthropic-compatible server, or `--provider openai --base-url http://localhost:11434` for any
+  OpenAI-compatible one (Ollama, vLLM, LM Studio, LiteLLM). Same code path, your network only.
 
 `analyze`, `verify`, and `prove` are already fully local, so a complete readiness audit → lock → migrate
 → verify loop can run with no outbound traffic.

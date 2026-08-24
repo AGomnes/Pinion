@@ -30,14 +30,23 @@ public sealed record LlmUsage(
 public sealed record LlmResponse(string Text, LlmUsage Usage);
 
 /// <summary>
-/// The one outbound boundary for the AI layer. Implementations: the real Anthropic
-/// HTTP client (and any Anthropic-compatible local endpoint), and an offline heuristic
+/// The one outbound boundary for the AI layer. Implementations: HTTP clients for Anthropic and for
+/// OpenAI-compatible endpoints (including Azure OpenAI and local servers), plus an offline heuristic
 /// generator used to exercise the pipeline without a key.
+///
+/// Every implementation is opt-in: none is selected unless the user passes an explicit --provider.
 /// </summary>
 public interface ILlmClient
 {
-    /// <summary>Human-readable provider name, e.g. "anthropic", "heuristic".</summary>
+    /// <summary>Human-readable provider name, e.g. "anthropic", "openai", "heuristic".</summary>
     string Name { get; }
 
     Task<LlmResponse> CompleteAsync(LlmRequest request, CancellationToken ct);
+
+    /// <summary>
+    /// The exact request body this client would send, for `--dry-run`. Each provider must render its
+    /// OWN wire format: printing another provider's shape would make the audit preview a lie, which is
+    /// the one thing --dry-run exists to prevent. Offline providers say that nothing is sent.
+    /// </summary>
+    string PreviewRequest(LlmRequest request);
 }

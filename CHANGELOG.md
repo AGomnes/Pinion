@@ -7,6 +7,32 @@ All notable changes to Pinion are documented here. The format follows
 The **generated test/snapshot format** is versioned separately and stamped into every generated test
 (`// pinion-format: N`); a bump there is called out under the release that changes it.
 
+## [Unreleased]
+
+### Added
+- **OpenAI-compatible AI provider**, opt-in like every other outbound path: `--provider openai` and
+  `--provider azure-openai`. The same client also drives any OpenAI-compatible server via `--base-url`
+  (Ollama, vLLM, LM Studio, LiteLLM), which makes AI-assisted generation possible without a
+  third-party API at all. Azure uses its own `api-key` header and deployment route; `--model` there is
+  your deployment name. Keys come from `OPENAI_API_KEY` / `AZURE_OPENAI_API_KEY`.
+- `--model` and `--base-url` now default per provider, so `--provider openai` no longer inherits an
+  Anthropic model id.
+
+### Changed
+- `ILlmClient` gained `PreviewRequest`, so `--dry-run` renders each provider's OWN wire format.
+  Previously the preview was hardcoded to the Anthropic shape; with a second provider that would have
+  printed a payload the tool would never send, defeating the point of the flag.
+- Removed paid-tier language from user-visible surfaces: `generate` help text, the `--license`
+  description, and — importantly — the CI workflow files `pinion ci` writes into user repos, which
+  told them the mutation-score step needed a `PINION_LICENSE` secret. Nothing is gated.
+
+### Fixed
+- The secret scrubber missed modern OpenAI keys. `sk-[A-Za-z0-9]{20,}` stopped at the hyphen in
+  `sk-proj-…` / `sk-svcacct-…`, leaving most of the key in an outbound payload.
+- TRUST.md's audit command was inaccurate: grepping for `HttpClient` also matched `SeamAnalyzer` and
+  `SeamRewriter`, where the name appears in a list of *strings* Pinion detects in your code. It now
+  greps for construction and sending, which returns exactly the two provider clients.
+
 ## [1.0.0] - 2026-08-24
 
 First public release. The full local-first workflow: audit a legacy .NET codebase, lock what it

@@ -9,7 +9,7 @@ using Pinion.Generate.Licensing;
 namespace Pinion.Cli;
 
 /// <summary>
-/// `pinion generate` — the paid AI tier. Writes characterization tests that LOCK the
+/// `pinion generate` — writes characterization tests that LOCK the
 /// current behavior of chosen targets (golden masters), with a compile→run→repair loop.
 /// </summary>
 internal static class GenerateCommand
@@ -35,18 +35,18 @@ internal static class GenerateCommand
         };
         var providerOption = new Option<string>("--provider")
         {
-            Description = "Generator: 'deterministic' (default, offline, no AI) or 'anthropic' (AI, opt-in, needs ANTHROPIC_API_KEY).",
+            Description = "Generator: 'deterministic' (default, offline, no AI). AI providers are opt-in: 'anthropic', 'openai', 'azure-openai' (each needs its own API key env var), plus 'heuristic' for offline pipeline testing.",
             DefaultValueFactory = _ => "deterministic",
         };
         var modelOption = new Option<string>("--model")
         {
-            Description = "Model id for generation.",
-            DefaultValueFactory = _ => GenerationOptions.DefaultModel,
+            Description = "Model id for generation. Defaults per provider; for azure-openai this is your DEPLOYMENT name and is required.",
+            DefaultValueFactory = _ => "",
         };
         var baseUrlOption = new Option<string>("--base-url")
         {
-            Description = "Override the API base URL (e.g. a local Anthropic-compatible endpoint).",
-            DefaultValueFactory = _ => "https://api.anthropic.com",
+            Description = "Override the API base URL (a local or self-hosted endpoint, a gateway, or your Azure OpenAI resource). Defaults to the selected provider's own host.",
+            DefaultValueFactory = _ => "",
         };
         var maxRepairsOption = new Option<int>("--max-repairs")
         {
@@ -84,18 +84,18 @@ internal static class GenerateCommand
         };
         var licenseOption = new Option<string?>("--license")
         {
-            Description = "Paid-tier license key (else PINION_LICENSE env / pinion.license file is used).",
+            Description = "License key (else PINION_LICENSE env / pinion.license file). Dormant: nothing is gated.",
         };
         var dryRunOption = new Option<bool>("--dry-run")
         {
-            Description = "Show exactly what would be sent to the model and make no API call (no license required).",
+            Description = "Show exactly what would be sent to the model, in that provider's own wire format, and make no API call.",
         };
         var verboseOption = new Option<bool>("--verbose", "-v")
         {
             Description = "Print pipeline + diagnostics to stderr.",
         };
 
-        var cmd = new Command("generate", "Generate characterization tests that lock current behavior (paid AI tier).")
+        var cmd = new Command("generate", "Generate characterization tests that lock current behavior. Deterministic and offline by default; AI providers are opt-in.")
         {
             pathArg, testProjectOption, targetOption, topOption, providerOption,
             modelOption, baseUrlOption, maxRepairsOption, maxSpendOption, maxTargetsOption,
@@ -210,29 +210,12 @@ internal static class GenerateCommand
             if (provider.Equals("deterministic", StringComparison.OrdinalIgnoreCase))
                 return await RunDeterministicAsync(genAdapter, targets, path, testProject, dryRun, ct);
 
-            ILlmClient llm;
-            if (dryRun || provider.Equals("heuristic", StringComparison.OrdinalIgnoreCase))
-            {
-                llm = new HeuristicLlmClient();
-            }
-            else if (provider.Equals("heuristic-faulty", StringComparison.OrdinalIgnoreCase))
-            {
-                llm = new FaultInjectingLlmClient(new HeuristicLlmClient(), failFirst: 1);
-            }
-            else
-            {
-                string? apiKey = Environment.GetEnvironmentVariable("ANTHROPIC_API_KEY");
-                if (string.IsNullOrEmpty(apiKey))
-                {
-                    Console.Error.WriteLine("error: ANTHROPIC_API_KEY is not set. Set it, or use the default --provider deterministic, or --dry-run.");
-                    return 1;
-                }
-                if (baseUrl == "https://api.anthropic.com" && !ModelCatalog.IsKnown(model))
-                    Console.Error.WriteLine($"warning: '{model}' is not a model id Pinion recognizes. " +
-                        $"Known: {string.Join(", ", ModelCatalog.Known)}. Proceeding — pass a correct id if this was a typo.");
-                WarnIfBaseUrlExposesKey(baseUrl);
-                llm = new AnthropicClient(apiKey, baseUrl);
-            }
+            // Every provider below is OPT-IN: reached only because the user passed --provider
+            // explicitly. The default is 'deterministic', which returned above and never touches the
+            // network. An API key sitting in the environment selects nothing on its own.
+            var (llm, resolvedModel, providerError) = CreateLlmClient(provider, model, baseUrl, dryRun);
+            if (llm is null) return providerError;
+            model = resolvedModel;
 
             if (!dryRun)
             {
@@ -313,24 +296,105 @@ internal static class GenerateCommand
         }
     }
 
+
     /// <summary>
-    /// The ANTHROPIC_API_KEY is attached to every request as the x-api-key header regardless of
-    /// --base-url. Make key egress visible: warn when the key would be sent anywhere other than Anthropic
-    /// (a proxy, a typo'd host, a local model), and again when it would travel in cleartext to a remote
-    /// host. Advisory only — http://localhost for an air-gapped local model is a supported use, so this
-    /// never blocks; it just ensures the user sees where their key is going.
+    /// Build the opt-in AI client for <paramref name="provider"/>. Returns (null, exitCode) with a
+    /// message already printed when the provider is unusable.
+    ///
+    /// On --dry-run the real provider's client is still constructed, with an empty key, so the preview
+    /// shows that provider's ACTUAL wire format. No request is sent: TestGenerator returns before the
+    /// send. Substituting a different client here would make --dry-run print a payload the tool would
+    /// never send, defeating the point of the flag.
     /// </summary>
-    private static void WarnIfBaseUrlExposesKey(string baseUrl)
+    private static (ILlmClient? Client, string Model, int ExitCode) CreateLlmClient(
+        string provider, string model, string baseUrl, bool dryRun)
+    {
+        string p = provider.ToLowerInvariant();
+
+        if (p == "heuristic") return (new HeuristicLlmClient(), model, 0);
+        if (p == "heuristic-faulty") return (new FaultInjectingLlmClient(new HeuristicLlmClient(), failFirst: 1), model, 0);
+
+        (string keyVar, string defaultBase) = p switch
+        {
+            "anthropic" => ("ANTHROPIC_API_KEY", "https://api.anthropic.com"),
+            "openai" => ("OPENAI_API_KEY", OpenAiClient.DefaultBaseUrl),
+            "azure-openai" => ("AZURE_OPENAI_API_KEY", ""),
+            _ => ("", ""),
+        };
+
+        if (keyVar.Length == 0)
+        {
+            Console.Error.WriteLine($"error: unknown --provider '{provider}'. Valid: deterministic (default), " +
+                "anthropic, openai, azure-openai, heuristic, heuristic-faulty.");
+            return (null, model, 1);
+        }
+
+        // --model defaults per provider, so `--provider openai` doesn't inherit an Anthropic id and 404.
+        if (string.IsNullOrWhiteSpace(model))
+        {
+            model = ModelCatalog.DefaultFor(p) ?? "";
+            if (model.Length == 0)
+            {
+                Console.Error.WriteLine($"error: --provider {p} has no default model. Pass --model " +
+                    "(for azure-openai, your deployment name).");
+                return (null, model, 1);
+            }
+        }
+
+        string resolvedBase = string.IsNullOrWhiteSpace(baseUrl) ? defaultBase : baseUrl;
+        if (p == "azure-openai" && resolvedBase.Length == 0)
+        {
+            Console.Error.WriteLine("error: --provider azure-openai needs --base-url pointing at your resource " +
+                "(e.g. https://my-resource.openai.azure.com), and --model set to your deployment name.");
+            return (null, model, 1);
+        }
+
+        // A key is only required to actually send. --dry-run builds the same client with an empty key
+        // so a prospect can audit the exact payload without holding an account.
+        string apiKey = Environment.GetEnvironmentVariable(keyVar) ?? "";
+        if (!dryRun && apiKey.Length == 0)
+        {
+            Console.Error.WriteLine($"error: {keyVar} is not set. Set it, use the default --provider deterministic, or --dry-run.");
+            return (null, model, 1);
+        }
+
+        if (ModelCatalog.ShouldWarn(p, model))
+            Console.Error.WriteLine($"warning: '{model}' is not a model id Pinion recognizes for {p}. " +
+                $"Known: {string.Join(", ", ModelCatalog.KnownFor(p))}. Proceeding — pass a correct id if this was a typo.");
+
+        if (!dryRun) WarnIfBaseUrlExposesKey(resolvedBase, defaultBase, keyVar);
+
+        return p switch
+        {
+            "anthropic" => (new AnthropicClient(apiKey, resolvedBase), model, 0),
+            "openai" => (new OpenAiClient(apiKey, resolvedBase), model, 0),
+            _ => (new OpenAiClient(apiKey, resolvedBase, OpenAiClient.AuthStyle.AzureApiKey, azureDeployment: model), model, 0),
+        };
+    }
+    /// <summary>
+    /// The API key is attached to every request regardless of --base-url. Make key egress visible: warn
+    /// when the key would go anywhere other than the provider's own host (a proxy, a typo'd host, a local
+    /// model), and again when it would travel in cleartext to a remote host. Advisory only —
+    /// http://localhost for an air-gapped local model is a supported use, so this never blocks; it just
+    /// ensures the user sees where their key is going.
+    /// </summary>
+    private static void WarnIfBaseUrlExposesKey(string baseUrl, string providerDefault, string keyVar)
     {
         if (!Uri.TryCreate(baseUrl, UriKind.Absolute, out var uri))
         {
             Console.Error.WriteLine($"warning: --base-url '{baseUrl}' is not a valid absolute URL.");
             return;
         }
-        if (uri.Host.Equals("api.anthropic.com", StringComparison.OrdinalIgnoreCase)) return;
 
-        Console.Error.WriteLine($"warning: --base-url points at {uri.Host}, not api.anthropic.com — your " +
-            "ANTHROPIC_API_KEY will be sent there as the x-api-key header. Only use an endpoint you trust.");
+        // Azure has no single canonical host (every tenant differs), so treat any *.openai.azure.com
+        // as expected rather than warning on every legitimate resource name.
+        bool expected = Uri.TryCreate(providerDefault, UriKind.Absolute, out var def)
+            && uri.Host.Equals(def.Host, StringComparison.OrdinalIgnoreCase);
+        expected |= uri.Host.EndsWith(".openai.azure.com", StringComparison.OrdinalIgnoreCase);
+        if (expected) return;
+
+        Console.Error.WriteLine($"warning: --base-url points at {uri.Host} — your {keyVar} will be sent " +
+            "there. Only use an endpoint you trust.");
         if (!uri.Scheme.Equals(Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase) && !uri.IsLoopback)
             Console.Error.WriteLine($"warning: --base-url uses {uri.Scheme} (not https) to a remote host — the API key would travel in cleartext.");
     }

@@ -47,6 +47,7 @@ public class SpendCeilingTests
     {
         public int Calls { get; private set; }
         public string Name => "costly";
+        public string PreviewRequest(LlmRequest request) => "(test double)";
         public Task<LlmResponse> CompleteAsync(LlmRequest request, CancellationToken ct)
         {
             Calls++;

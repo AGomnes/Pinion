@@ -19,6 +19,8 @@ public sealed class FaultInjectingLlmClient : ILlmClient
 
     public string Name => $"{_inner.Name}+fault";
 
+    public string PreviewRequest(LlmRequest request) => _inner.PreviewRequest(request);
+
     public async Task<LlmResponse> CompleteAsync(LlmRequest request, CancellationToken ct)
     {
         int call = Interlocked.Increment(ref _calls);

@@ -3,7 +3,7 @@
 A full end-to-end run on **[nopCommerce](https://github.com/nopSolutions/nopCommerce)** — a large, real,
 untested .NET e-commerce platform (tax, pricing, orders, discounts). Nothing here is staged: the numbers
 are from `Nop.Services` exactly as it ships. Everything below ran **locally, offline, with no API key,
-for $0** (the deterministic tier).
+for $0** using the deterministic generator.
 
 Reproduce: `pinion analyze <Nop.Services.csproj>` → `pinion generate … -p <host.csproj>` → `pinion verify <host.csproj>`.
 
