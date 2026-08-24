@@ -59,26 +59,26 @@ command by command. AI is opt-in (`--provider anthropic`), off by default, and n
 
 ## Status
 
-| Milestone | Scope | State |
-|---|---|---|
-| **1 — `analyze` skeleton** | Roslyn load, IR, cyclomatic complexity, test detection, ranked report (console/Markdown/JSON) | ✅ done |
-| **2 — enrich `analyze`** | call graph (blast radius), domain tagging, migration-landmine detection, Coverlet coverage % | ✅ done |
-| **3 — `generate` (AI)** | context extraction, thin Anthropic client, secret scrubber + `--dry-run`, compile→run→repair, golden masters | ✅ done |
-| 4 — hardening / premium | mutation testing (`prove`) ✓, property-based (CsCheck) ✓, CI templates (`ci`) ✓, HTML dashboard ✓; prompt caching + Batch API deferred (AI) | non-AI items done |
+**v1.0.0, published on [NuGet](https://www.nuget.org/packages/Pinion).** Every command is shipped.
+236 tests run against .NET 8 and .NET 10 on each commit, and every release re-runs the end-to-end
+pipeline that synthesizes, compiles, executes and snapshots a generated test.
 
-The AI-free **`analyze`** command is complete. The **`generate`** command (Milestone 3)
-writes characterization tests that lock current behavior, with a compile→run→repair loop.
+`analyze` · `generate` · `verify` · `accept` · `prove` · `seam` · `ci` · `quickstart` · `init-tests`
 
-Since then the **deterministic** generator (the default — AI is opt-in, last-resort) has been deepened
-with **conjunctive string + regex guard solvers** that reach branches the constant-miner can't (with
-measured per-method mutation-score lifts in the `prove` flywheel below), plus **constructor
-characterization** and **non-determinism quarantine** (a flaky golden master is detected on capture and
-rejected with a seam diagnosis). The workflow has grown ends: **`pinion quickstart`** is the one-command
-golden path (analyze → scaffold → lock your riskiest behaviors), **`pinion seam`** automatically
-introduces Feathers seams for ambient values so untestable methods become lockable, **`verify --since`**
-scopes a PR check to what a change touched, and **`pinion accept`** re-baselines intended changes.
-The engine has been dogfooded on real code (NodaTime, Humanizer, eShopOnWeb, nopCommerce) and real
-.NET Framework legacy apps (WebForms/WCF/EF6); both `analyze` and `generate` speak **VB.NET**.
+C# and VB.NET. `generate` is deterministic and offline by default; the AI provider is opt-in and
+never required.
+
+Validated beyond the bundled samples on NodaTime, Humanizer, eShopOnWeb and nopCommerce
+(see [PROOF.md](PROOF.md)), plus real .NET Framework apps using WebForms, WCF and EF6.
+
+**Known limits**
+
+- The deterministic generator skips generic methods and generic containing types. Use
+  `--provider anthropic` for those.
+- VB.NET targets are deterministic-only; the AI context extractor reads C# syntax.
+- Non-public methods are skipped, since a test in a separate assembly can only call public members.
+- Deferred, and needing a live API key to finish: Batch API pricing and Haiku/Sonnet model routing.
+  Both are cost optimizations for the opt-in AI path, so neither affects default use.
 
 ---
 
@@ -329,6 +329,14 @@ difference is where the text comes from.
 | `--timeout <s>` | `180` | per-method run timeout — kills a hung/infinite-loop target |
 | `--dry-run` | off | print the exact outbound bytes / synthesized test and run nothing |
 
+### Non-determinism is caught, not baked in
+
+A method that returns something different each run (a timestamp, a GUID, anything reading
+`DateTime.Now`) would produce a golden master that fails every future `verify`. Pinion detects this at
+capture time: after locking a snapshot it re-runs the test, and if the output differs the target is
+**quarantined** rather than recorded. The test and its snapshot are deleted, and the report names the
+ambient dependency responsible so `pinion seam` can make the method lockable.
+
 ### Safety when running generated code
 
 Generating a test **executes the target method** with synthesized inputs. For a pure function that's
@@ -380,7 +388,7 @@ CHANGED METHODS
 
 - **Exit code is the gate** — `0` only when every locked method behaves identically; non-zero on any
   change or a build break. Drop it into CI (or use `pinion ci`) and a behavior change fails the build.
-- **Free tier, offline, no AI** — it just runs the committed tests and diffs the snapshots.
+- **Offline, no AI** — it just runs the committed tests and diffs the snapshots.
 - If the suite no longer compiles, `verify` reports that the **migration broke the build** rather than
   guessing about behavior.
 
@@ -532,8 +540,9 @@ at [docs/EULA-draft-superseded.md](docs/EULA-draft-superseded.md) and governs no
 </details>
 
 
-**Security (the sales pitch):** code stays local; the only thing that ever leaves is per-method
-context, through a **single, auditable** HTTP call to one endpoint. A pre-send scrubber strips
+**Security.** Nothing leaves your machine unless you opt in with `--provider anthropic`, which is not
+the default. Without that flag Pinion makes no network request at all. With it, the only thing that
+leaves is per-method context, through a **single, auditable** HTTP call to one endpoint. A pre-send scrubber strips
 keys/passwords/tokens/connection-string credentials; a never-send allowlist (`--no-send` /
 `.pinionnosend`) keeps designated files/namespaces fully offline; `--dry-run` shows the literal
 payload; no telemetry. Use Anthropic Zero-Data-Retention (an org-level account setting), or
@@ -655,7 +664,6 @@ samples/LegacyShop           a deliberately under-tested sample (risk + blast ra
 samples/LegacyVb             the VB.NET analog (analyze + generate: mined Select Case constants)
 samples/LegacyWeb            legacy WebForms/WCF/EF6 fixtures (landmine detection)
 samples/LegacyFramework      classic non-SDK v4.8 .csproj (source-scan fallback)
-PINION_SPEC.md               the source-of-truth build brief
 CHANGELOG.md                 release history (Keep a Changelog)
 TRUST.md                     code-accurate data-handling statement (what leaves the machine, per command)
 ```

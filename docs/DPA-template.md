@@ -48,7 +48,8 @@ Personnel authorized to process Personal Data are bound by confidentiality oblig
 
 ## 8. Security measures
 - Local-first execution; source code is not transmitted except as described in §2.
-- A single declared outbound endpoint; no telemetry.
+- A single declared outbound endpoint, reached only when the Controller opts in with
+  `--provider anthropic`; no telemetry.
 - Pre-send secret scrubbing of outbound context and written snapshots.
 - Never-send allowlist for designated files/namespaces.
 - Optional fully-local / air-gapped operation (deterministic generator or local model endpoint).

@@ -22,7 +22,8 @@ changelog unless you prefer otherwise.
 
 ## What leaves your machine
 
-The short version: **by default, nothing.**
+The short version: **by default, nothing.** Pinion makes no network request unless you explicitly pass
+`--provider anthropic`, which is never the default and is never set for you.
 
 | Command | Network |
 |---|---|
