@@ -583,7 +583,36 @@ internal sealed partial class CSharpDeterministicSynthesizer
         if (KnownFrameworkValue(t) is { } k) return k;
         if (t.TypeKind == TypeKind.Interface && IsListLike(t) && ElementType(t) is { } el)
             return $"global::System.Array.Empty<{Fq(el)}>()";
+        if (ConstructedStubValue(t) is { } built) return built;
         return $"default({Fq(t)})!";
+    }
+
+    /// <summary>
+    /// A constructed instance for a stub's reference-type return, when the type has an accessible
+    /// parameterless constructor.
+    ///
+    /// Returning null here is what made stub-driven characterization near-worthless on real service
+    /// layers: measured on nopCommerce, 72% of every recorded outcome was ArgumentNullException or
+    /// NullReferenceException, because a stubbed dependency handed back null and the method's own guard
+    /// clause threw immediately. That locks the guard clause instead of the business logic, and a
+    /// migration could then rewrite the logic without failing a single test.
+    ///
+    /// Deliberately narrow: parameterless constructors only. Feeding arguments in risks recursion
+    /// through object graphs and picking a constructor with side effects, and a stub exists to be inert.
+    /// Types without one still fall back to default!.
+    /// </summary>
+    private static string? ConstructedStubValue(ITypeSymbol t)
+    {
+        if (t.TypeKind is not (TypeKind.Class or TypeKind.Struct)) return null;
+        if (t.IsAbstract || t.IsRefLikeType) return null;
+        if (t.SpecialType != SpecialType.None) return null;   // string/primitives keep their own defaults
+        if (t is not INamedTypeSymbol named || named.IsGenericType) return null;
+
+        bool hasParameterlessCtor = named.InstanceConstructors.Any(c =>
+            c.Parameters.Length == 0 && c.DeclaredAccessibility == Accessibility.Public);
+        if (!hasParameterlessCtor) return null;
+
+        return $"new {Fq(named)}()";
     }
 
     private static bool IsListLike(ITypeSymbol t) =>

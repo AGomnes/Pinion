@@ -9,6 +9,21 @@ The **generated test/snapshot format** is versioned separately and stamped into 
 
 ## [Unreleased]
 
+### Changed
+- **Generated interface stubs now return a constructed instance instead of `null`** when the return
+  type has an accessible parameterless constructor. Stub-driven characterization was near-worthless on
+  real service layers: measured across nopCommerce's locked methods, **72% of every recorded outcome
+  was `ArgumentNullException` or `NullReferenceException`**, because a stubbed dependency returned null
+  and the method's own guard clause threw before reaching any logic. That pinned the guard rather than
+  the behavior, so a migration could rewrite the logic without failing a test. After the change,
+  `ArgumentNullException` outcomes dropped to **zero** and null-related outcomes fell from 72% to 53%.
+  Deliberately narrow: parameterless constructors only, since feeding arguments risks recursing through
+  object graphs and invoking constructors with side effects. Regenerating existing tests will produce
+  different (more meaningful) golden masters.
+
+  The remaining NullReferenceExceptions have a separate cause: properties ON the constructed object are
+  still null. Populating those means fabricating domain state, so it is not obviously correct.
+
 ### Fixed
 - **Pinion could not lock a .NET Framework project**, which is its main use case: the whole premise is
   characterizing behavior BEFORE a migration, so the host test project is usually still net4x. Two

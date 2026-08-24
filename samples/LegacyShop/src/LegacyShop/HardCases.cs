@@ -141,3 +141,33 @@ public sealed class ResultBox
     public bool Success => _value.HasValue;
     public int Value => _value ?? throw new InvalidOperationException("no value");
 }
+
+/// <summary>A domain object a collaborator hands back. Parameterless-constructible, which is what lets
+/// a generated stub return a real instance instead of null.</summary>
+public sealed class RateCard
+{
+    public decimal Surcharge { get; set; }
+    public string Region { get; set; } = "";
+}
+
+/// <summary>The shape that dominates real service layers: a dependency returns an OBJECT, and the
+/// caller immediately dereferences it. When the stub returned null, every recorded outcome was a
+/// NullReferenceException (or an ArgumentNullException from a guard clause), so the golden master
+/// pinned the guard rather than the arithmetic. Measured on nopCommerce: 72% of outcomes.</summary>
+public interface IRateCardSource
+{
+    RateCard GetCard(string region);
+}
+
+/// <summary>Runs real arithmetic only if the stubbed source returns a non-null card.</summary>
+public sealed class SurchargeCalculator
+{
+    private readonly IRateCardSource _source;
+    public SurchargeCalculator(IRateCardSource source) => _source = source;
+
+    public decimal Apply(decimal amount, string region)
+    {
+        var card = _source.GetCard(region);
+        return amount + card.Surcharge;
+    }
+}
