@@ -10,7 +10,7 @@
     <PackAsTool>true</PackAsTool>
     <ToolCommandName>pinion</ToolCommandName>
     <PackageId>Pinion</PackageId>
-    <Version>0.1.0</Version>
+    <Version>1.0.0</Version>
     <Authors>Alexander Gomnes</Authors>
     <Description>Lock what your legacy .NET code does today into runnable characterization tests, migrate with AI or by hand, then prove nothing changed. Offline by default - the analyze and deterministic generate paths make zero network calls, with no telemetry and no AI unless you opt in. Supports C# and VB.NET.</Description>
     <PackageTags>characterization-tests;pinning-tests;golden-master;approval-testing;snapshot-testing;legacy;legacy-modernization;migration;roslyn;csharp;vbnet;mutation-testing;dotnet-tool;testing</PackageTags>

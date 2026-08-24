@@ -7,9 +7,10 @@ All notable changes to Pinion are documented here. The format follows
 The **generated test/snapshot format** is versioned separately and stamped into every generated test
 (`// pinion-format: N`); a bump there is called out under the release that changes it.
 
-## [Unreleased]
+## [1.0.0] - 2026-08-24
 
-First release candidate — the full local-first workflow, pending public publish.
+First public release. The full local-first workflow: audit a legacy .NET codebase, lock what it
+does today, migrate, and prove nothing changed.
 
 ### Added
 - `analyze` — free, offline migration-readiness audit: risk ranking, complexity, blast radius, domain
