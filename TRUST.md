@@ -34,6 +34,12 @@ Pinion makes **no network request at all** unless you explicitly pass `--provide
 is not the default and nothing sets it for you: the default `generate` provider is `deterministic`,
 which has no network path. With the flag absent, the code below is never reached.
 
+A set `ANTHROPIC_API_KEY` changes nothing on its own. The variable is read only inside the branch that
+`--provider anthropic` selects
+([`GenerateCommand`](src/Pinion.Cli/GenerateCommand.cs)), so on a default run Pinion never reads it at
+all. The flag is the only thing that enables the outbound path, and CI runners or shared machines that
+happen to have a key in the environment are unaffected.
+
 The *only* code in Pinion that makes a network request is
 [`AnthropicClient`](src/Pinion.Generate/AnthropicClient.cs): one `HTTP POST` to `/v1/messages`. You can
 verify this yourself — there is exactly one `HttpClient` in the entire `src/` tree:

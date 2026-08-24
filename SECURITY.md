@@ -23,7 +23,9 @@ changelog unless you prefer otherwise.
 ## What leaves your machine
 
 The short version: **by default, nothing.** Pinion makes no network request unless you explicitly pass
-`--provider anthropic`, which is never the default and is never set for you.
+`--provider anthropic`, which is never the default and is never set for you. A set `ANTHROPIC_API_KEY`
+does not enable anything by itself: the variable is read only inside the branch that flag selects, so a
+CI runner or shared machine with a key in its environment is unaffected.
 
 | Command | Network |
 |---|---|
