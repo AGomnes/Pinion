@@ -15,12 +15,25 @@ public static class TestProjectScaffolder
     /// <paramref name="codeProjectRelativePath"/>. Package versions match the bundled sample, which is the
     /// set the deterministic generator's emitted tests are known to compile and run against.
     /// </summary>
+    /// <summary>
+    /// .NET Framework targets default to <b>C# 7.3</b>, which rejects both `Nullable` and
+    /// `ImplicitUsings` outright (CS8630). Without pinning the language version the scaffolded project
+    /// cannot compile, so `generate` characterizes nothing — on precisely the legacy codebases Pinion
+    /// exists for. Modern targets already default to a recent language version and need no pin.
+    /// </summary>
+    private static bool IsDotNetFramework(string tfm) =>
+        tfm.StartsWith("net4", StringComparison.OrdinalIgnoreCase)
+        || tfm.StartsWith("net3", StringComparison.OrdinalIgnoreCase)
+        || tfm.StartsWith("net2", StringComparison.OrdinalIgnoreCase);
+
     public static string Csproj(string codeProjectRelativePath, string targetFramework = DefaultTargetFramework) =>
         $"""
         <Project Sdk="Microsoft.NET.Sdk">
 
           <PropertyGroup>
-            <TargetFramework>{targetFramework}</TargetFramework>
+            <TargetFramework>{targetFramework}</TargetFramework>{(IsDotNetFramework(targetFramework)
+            ? "\n    <!-- .NET Framework defaults to C# 7.3, which rejects Nullable/ImplicitUsings (CS8630). -->\n    <LangVersion>latest</LangVersion>"
+            : "")}
             <Nullable>enable</Nullable>
             <ImplicitUsings>enable</ImplicitUsings>
             <IsPackable>false</IsPackable>

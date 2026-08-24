@@ -330,15 +330,28 @@ public sealed class CSharpTestGenerator : IGenerationAdapter, IDisposable
         using System.Globalization;
         using System.Runtime.CompilerServices;
 
-        namespace Pinion.Generated;
-
-        internal static class __PinionGeneratedSetup
+        // ModuleInitializerAttribute arrived in .NET 5. On .NET Framework the BCL has no such type, and
+        // the copies shipped inside other packages are `internal` to their own assemblies (CS0122), so
+        // the test project must declare its own. Locking behavior BEFORE migrating is the main use case,
+        // which means the host project is frequently still net48 — without this it cannot compile.
+        #if !NET5_0_OR_GREATER
+        namespace System.Runtime.CompilerServices
         {
-            [ModuleInitializer]
-            internal static void PinCulture()
+            [System.AttributeUsage(System.AttributeTargets.Method, Inherited = false)]
+            internal sealed class ModuleInitializerAttribute : System.Attribute { }
+        }
+        #endif
+
+        namespace Pinion.Generated
+        {
+            internal static class __PinionGeneratedSetup
             {
-                CultureInfo.DefaultThreadCurrentCulture = CultureInfo.InvariantCulture;
-                CultureInfo.DefaultThreadCurrentUICulture = CultureInfo.InvariantCulture;
+                [ModuleInitializer]
+                internal static void PinCulture()
+                {
+                    CultureInfo.DefaultThreadCurrentCulture = CultureInfo.InvariantCulture;
+                    CultureInfo.DefaultThreadCurrentUICulture = CultureInfo.InvariantCulture;
+                }
             }
         }
         """;

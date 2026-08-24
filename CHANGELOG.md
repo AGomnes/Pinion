@@ -9,6 +9,20 @@ The **generated test/snapshot format** is versioned separately and stamped into 
 
 ## [Unreleased]
 
+### Fixed
+- **Pinion could not lock a .NET Framework project**, which is its main use case: the whole premise is
+  characterizing behavior BEFORE a migration, so the host test project is usually still net4x. Two
+  defaults made that impossible, both surfacing only as a compile error inside the generated project
+  while `generate` reported "0 characterized":
+  - `init-tests --tfm net48` scaffolded `Nullable`/`ImplicitUsings`, which .NET Framework rejects
+    because it defaults to C# 7.3 (CS8630). Framework targets now pin `<LangVersion>latest</LangVersion>`.
+  - The generated setup file used `[ModuleInitializer]`, absent from the .NET Framework BCL and
+    `internal` in the packages that ship a copy (CS0122). It now declares its own under
+    `#if !NET5_0_OR_GREATER`.
+
+  Verified end to end on the bundled v4.8 sample: 2/2 characterized, real bracket boundaries locked
+  (99999/100000/100001), and `verify` reports behavior preserved.
+
 ### Added
 - `integrations/github-copilot-upgrade/` — a custom upgrade instruction for Microsoft's Copilot upgrade
   agent, so it locks behavior with Pinion before transforming code and verifies afterwards. Every
