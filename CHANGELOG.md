@@ -7,6 +7,14 @@ All notable changes to Pinion are documented here. The format follows
 The **generated test/snapshot format** is versioned separately and stamped into every generated test
 (`// pinion-format: N`); a bump there is called out under the release that changes it.
 
+## [Unreleased]
+
+### Added
+- `integrations/github-copilot-upgrade/` — a custom upgrade instruction for Microsoft's Copilot upgrade
+  agent, so it locks behavior with Pinion before transforming code and verifies afterwards. Every
+  command in it was checked against the real CLI, and the loop was run end to end on the LegacyShop
+  sample, including confirming that `verify` catches a one-digit change to a locked method.
+
 ## [1.1.0] - 2026-08-24
 
 ### Added
