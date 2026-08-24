@@ -152,7 +152,18 @@ internal static class GenerateCommand
 
         try
         {
-            var adapter = new CSharpAdapter(vlog);
+            // VB targets: analyze via the VB adapter; synthesis emits C# tests against the VB assembly.
+            // Deterministic-only for now — the AI context extractor reads C# syntax.
+            bool isVb = AnalyzeCommand.IsVisualBasic(path);
+            if (isVb && !provider.Equals("deterministic", StringComparison.OrdinalIgnoreCase))
+            {
+                Console.Error.WriteLine("error: VB.NET targets support --provider deterministic only (the default). The AI providers are C#-only for now.");
+                return 1;
+            }
+
+            Pinion.Engine.Abstractions.ILanguageAdapter adapter = isVb
+                ? new Pinion.Adapters.VisualBasic.VisualBasicAdapter(vlog)
+                : new CSharpAdapter(vlog);
 
             Console.Error.WriteLine($"Analyzing {path} …");
             var units = await adapter.AnalyzeAsync(path, ct);

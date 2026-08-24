@@ -41,7 +41,7 @@ golden path (analyze → scaffold → lock your riskiest behaviors), **`pinion s
 introduces Feathers seams for ambient values so untestable methods become lockable, **`verify --since`**
 scopes a PR check to what a change touched, and **`pinion accept`** re-baselines intended changes.
 The engine has been dogfooded on real code (NodaTime, Humanizer, eShopOnWeb, nopCommerce) and real
-.NET Framework legacy apps (WebForms/WCF/EF6); `analyze` also speaks **VB.NET**.
+.NET Framework legacy apps (WebForms/WCF/EF6); both `analyze` and `generate` speak **VB.NET**.
 
 ---
 
@@ -277,11 +277,11 @@ difference is where the text comes from.
 
 | Option | Default | Meaning |
 |---|---|---|
-| `<path>` | — | code to characterize (`.sln`/`.csproj`/dir) |
+| `<path>` | — | code to characterize (`.sln`/`.csproj`/`.vbproj`/dir; a VB path routes to the VB adapter) |
 | `-p, --test-project` | — | test project to host generated tests (refs the code + xunit + VerifyXunit) |
 | `-t, --target` | — | only methods whose name/id contains this substring |
 | `--top <n>` | `1` | when no `--target`, take the top N high-risk untested methods |
-| `--provider` | `deterministic` | `deterministic` (offline, no AI — default) or `anthropic` (AI, opt-in, needs `ANTHROPIC_API_KEY`) |
+| `--provider` | `deterministic` | `deterministic` (offline, no AI — default) or `anthropic` (AI, opt-in, needs `ANTHROPIC_API_KEY`). VB.NET targets are `deterministic`-only |
 | `--model` | `claude-sonnet-4-6` | generation model (Sonnet for reasoning; Haiku is the cheap tier) |
 | `--base-url` | api.anthropic.com | override for a local Anthropic-compatible endpoint (air-gapped mode) |
 | `--max-repairs` | `3` | compile/run repair attempts per target (AI path) |
@@ -602,11 +602,11 @@ src/Pinion.Engine                  FREE: IR, risk scoring, domain tagging, repor
 src/Pinion.Adapters.CSharp         FREE: Roslyn analyze — call graph, landmines, seams, coverage
 src/Pinion.Adapters.VisualBasic    FREE: VB.NET analyze adapter (same IR, MSBuild + source-scan)
 src/Pinion.Generate                PAID: LLM client, scrubber, prompts, orchestrator, licensing
-src/Pinion.Adapters.CSharp.Generate PAID: C# extract + emit + compile/run/snapshot
+src/Pinion.Adapters.CSharp.Generate PAID: C# + VB extract + emit + compile/run/snapshot (tests are always C#)
 src/Pinion.Cli                     `pinion` global tool (bundles both tiers)
 tests/Pinion.Tests                 engine, analyze, landmine, generation, seam, and licensing tests (230+)
 samples/LegacyShop           a deliberately under-tested sample (risk + blast radius + coverage)
-samples/LegacyVb             the VB.NET analog (VB adapter: complexity, call graph, landmines)
+samples/LegacyVb             the VB.NET analog (analyze + generate: mined Select Case constants)
 samples/LegacyWeb            legacy WebForms/WCF/EF6 fixtures (landmine detection)
 samples/LegacyFramework      classic non-SDK v4.8 .csproj (source-scan fallback)
 PINION_SPEC.md               the source-of-truth build brief

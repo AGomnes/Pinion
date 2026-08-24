@@ -13,6 +13,8 @@
     <ProjectReference Include="..\Pinion.Engine\Pinion.Engine.csproj" />
     <ProjectReference Include="..\Pinion.Generate\Pinion.Generate.csproj" />
     <ProjectReference Include="..\Pinion.Adapters.CSharp\Pinion.Adapters.CSharp.csproj" />
+    <!-- VB generate: resolve + mine from VB syntax, emit C# tests against the VB assembly. -->
+    <ProjectReference Include="..\Pinion.Adapters.VisualBasic\Pinion.Adapters.VisualBasic.csproj" />
   </ItemGroup>
 
   <ItemGroup>

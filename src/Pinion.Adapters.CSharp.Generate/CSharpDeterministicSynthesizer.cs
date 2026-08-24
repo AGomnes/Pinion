@@ -37,6 +37,17 @@ internal sealed partial class CSharpDeterministicSynthesizer : IDisposable
 
     private static readonly SymbolDisplayFormat FullyQualified = SymbolDisplayFormat.FullyQualifiedFormat;
 
+    /// <summary>Render a symbol as C# regardless of its source language. A VB symbol's own
+    /// <c>ToDisplayString</c> yields VB syntax (<c>Global.X</c>, <c>Task(Of T)</c>) — invalid in the
+    /// emitted C# test — so every emission/comparison site formats through the C# renderer.</summary>
+    internal static string Fq(ISymbol symbol) =>
+        Microsoft.CodeAnalysis.CSharp.SymbolDisplay.ToDisplayString(symbol, FullyQualified);
+
+    /// <summary>C#-flavored default display — the form the emitter's string comparisons assume
+    /// (e.g. <c>System.Threading.Tasks.Task&lt;TResult&gt;</c>).</summary>
+    internal static string Def(ISymbol symbol) =>
+        Microsoft.CodeAnalysis.CSharp.SymbolDisplay.ToDisplayString(symbol);
+
     private readonly Action<string>? _log;
     private readonly bool _tryMsBuild;
     private readonly ConcurrentDictionary<string, Solution> _solutions = new(StringComparer.OrdinalIgnoreCase);
@@ -64,7 +75,8 @@ internal sealed partial class CSharpDeterministicSynthesizer : IDisposable
     // BaseMethodDeclarationSyntax covers methods AND constructors/operators — both carry Body/ExpressionBody.
     private sealed record Resolved(IMethodSymbol Method, BaseMethodDeclarationSyntax Decl, SemanticModel Model);
 
-    private sealed class Mined
+    // Internal (not private): the VB synthesis path (VbSynthesis) mines the same constants from VB syntax.
+    internal sealed class Mined
     {
         public SortedSet<string> Strings { get; } = new(StringComparer.Ordinal);
         public SortedSet<long> Ints { get; } = new();
@@ -82,20 +94,49 @@ internal sealed partial class CSharpDeterministicSynthesizer : IDisposable
 
     public async Task<string> SynthesizeAsync(CodeUnit unit, string sourceRoot, CancellationToken ct)
     {
+        // VB targets: resolve + mine from VB syntax, then EMIT A C# TEST — C# calls VB assemblies
+        // natively, so the golden-master machinery is shared. The emitter is symbol-driven either way.
+        if (unit.FilePath.EndsWith(".vb", StringComparison.OrdinalIgnoreCase))
+        {
+            var vbSolution = await GetVbSolutionAsync(sourceRoot, ct).ConfigureAwait(false);
+            var vb = await VbSynthesis.ResolveAsync(vbSolution, unit, ct).ConfigureAwait(false)
+                ?? throw new InvalidOperationException($"Could not resolve a symbol for {unit.DisplayName} (deterministic synthesis needs the source).");
+            GuardSupported(unit, vb.Method);
+            // No C# body → the string-guard solver is skipped; mined VB constants still drive inputs.
+            return Emit(unit, vb.Method, methodBody: null, VbSynthesis.MineConstants(vb.Body, vb.Model, ct));
+        }
+
         var solution = await GetSolutionAsync(sourceRoot).ConfigureAwait(false);
         Resolved r = await ResolveAsync(solution, unit, ct).ConfigureAwait(false)
             ?? throw new InvalidOperationException($"Could not resolve a symbol for {unit.DisplayName} (deterministic synthesis needs the source).");
 
-        if (r.Method.IsGenericMethod || r.Method.ContainingType.IsGenericType)
+        GuardSupported(unit, r.Method);
+        SyntaxNode? body = (SyntaxNode?)r.Decl.Body ?? r.Decl.ExpressionBody;
+        return Emit(unit, r.Method, body, MineConstants(r, ct));
+    }
+
+    /// <summary>Targets the deterministic generator can't characterize from another assembly.</summary>
+    private static void GuardSupported(CodeUnit unit, IMethodSymbol method)
+    {
+        if (method.IsGenericMethod || method.ContainingType.IsGenericType)
             throw new NotSupportedException("generic methods/types aren't supported by the deterministic generator yet — try --provider anthropic.");
 
         // A test in a separate assembly can only call public members of public types.
-        if (r.Method.DeclaredAccessibility != Accessibility.Public)
-            throw new NotSupportedException($"method is not public ({unit.DisplayName} is {r.Method.DeclaredAccessibility.ToString().ToLowerInvariant()}).");
-        if (r.Method.ContainingType.DeclaredAccessibility != Accessibility.Public)
-            throw new NotSupportedException($"containing type is not public ({r.Method.ContainingType.Name} is {r.Method.ContainingType.DeclaredAccessibility.ToString().ToLowerInvariant()}).");
+        if (method.DeclaredAccessibility != Accessibility.Public)
+            throw new NotSupportedException($"method is not public ({unit.DisplayName} is {method.DeclaredAccessibility.ToString().ToLowerInvariant()}).");
+        if (method.ContainingType.DeclaredAccessibility != Accessibility.Public)
+            throw new NotSupportedException($"containing type is not public ({method.ContainingType.Name} is {method.ContainingType.DeclaredAccessibility.ToString().ToLowerInvariant()}).");
+    }
 
-        return Emit(unit, r, MineConstants(r, ct));
+    /// <summary>VB solution, cached per source root (parallel to <see cref="GetSolutionAsync"/>).</summary>
+    private async Task<Solution> GetVbSolutionAsync(string sourceRoot, CancellationToken ct)
+    {
+        string key = "vb::" + Path.GetFullPath(sourceRoot);
+        if (_solutions.TryGetValue(key, out var cached)) return cached;
+        var (solution, workspace) = await Pinion.Adapters.VisualBasic.VbGenerateLoader
+            .LoadAsync(sourceRoot, _tryMsBuild, _log, ct).ConfigureAwait(false);
+        _workspaces.Add(workspace);
+        return _solutions.GetOrAdd(key, solution);
     }
 
     /// <summary>Cached per source root. A first-writer-wins race just leaves an extra workspace for Dispose.</summary>
@@ -237,11 +278,13 @@ internal sealed partial class CSharpDeterministicSynthesizer : IDisposable
         or SyntaxKind.LessThanOrEqualExpression or SyntaxKind.GreaterThanOrEqualExpression
         or SyntaxKind.EqualsExpression or SyntaxKind.NotEqualsExpression;
 
-    private string Emit(CodeUnit unit, Resolved r, Mined mined)
+    /// <summary>Emit the C# characterization test. Symbol-driven, so it serves BOTH languages: for a VB
+    /// target <paramref name="methodBody"/> is null (no C# body to run the string-guard solver on) and
+    /// the emitted C# test calls the VB assembly directly.</summary>
+    private string Emit(CodeUnit unit, IMethodSymbol method, SyntaxNode? methodBody, Mined mined)
     {
         _stubs.Clear(); // stubs are per-test; populated as args/receiver are built below
-        IMethodSymbol method = r.Method;
-        string type = method.ContainingType.ToDisplayString(FullyQualified);
+        string type = Fq(method.ContainingType);
         string methodName = method.Name;
         bool isStatic = method.IsStatic;
         // A constructor IS the unit under test: `new T(args)` is the call, the constructed object is the
@@ -257,7 +300,6 @@ internal sealed partial class CSharpDeterministicSynthesizer : IDisposable
         // out params carry no input value; others vary across their candidates. A top-level string
         // parameter is routed through the guard solver, which spans each guard's boundary (conjunctions
         // the constant-miner can't satisfy); everything else uses the constant-driven generator.
-        SyntaxNode? methodBody = (SyntaxNode?)r.Decl.Body ?? r.Decl.ExpressionBody;
         var perParam = method.Parameters
             .Select(p => p.RefKind == RefKind.Out ? new List<string> { "out _" }
                        : p.Type.SpecialType == SpecialType.System_String ? StringCandidates(p, methodBody, mined)
@@ -376,7 +418,7 @@ internal sealed partial class CSharpDeterministicSynthesizer : IDisposable
             {
                 case RefKind.Out:
                     string ov = $"__o{i}";
-                    pre.Add($"{p.Type.ToDisplayString(FullyQualified)} {ov} = default!;");
+                    pre.Add($"{Fq(p.Type)} {ov} = default!;");
                     args.Add($"out {ov}");
                     display.Add("out");
                     captures.Add((CaptureField(p.Name), ov));
@@ -384,7 +426,7 @@ internal sealed partial class CSharpDeterministicSynthesizer : IDisposable
                 case RefKind.Ref:
                     string rv = $"__r{i}";
                     // Explicit type, not `var` — a candidate of `null`/`default` can't infer a type (CS0815).
-                    pre.Add($"{p.Type.ToDisplayString(FullyQualified)} {rv} = {row[i]};");
+                    pre.Add($"{Fq(p.Type)} {rv} = {row[i]};");
                     args.Add($"ref {rv}");
                     display.Add(row[i]);
                     captures.Add((CaptureField(p.Name), rv));
@@ -412,7 +454,7 @@ internal sealed partial class CSharpDeterministicSynthesizer : IDisposable
         if (method.ReturnsVoid) return new ReturnShape(false, true, false);
 
         var rt = method.ReturnType;
-        string def = rt.OriginalDefinition.ToDisplayString();
+        string def = Def(rt.OriginalDefinition);
 
         if (def is "System.Threading.Tasks.Task" or "System.Threading.Tasks.ValueTask")
             return new ReturnShape(IsAsync: true, IsVoidLike: true, IsRefLike: false);

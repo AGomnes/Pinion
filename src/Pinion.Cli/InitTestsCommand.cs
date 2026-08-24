@@ -84,16 +84,25 @@ internal static class InitTestsCommand
         return cmd;
     }
 
-    /// <summary>Resolve a .csproj path or a directory containing exactly one .csproj to a full path.</summary>
+    /// <summary>Resolve a .csproj/.vbproj path (or a directory containing exactly one) to a full path.
+    /// The emitted test project is C# either way — a C# test project references a VB project natively,
+    /// which is how VB targets get characterized.</summary>
     private static string? ResolveCsproj(string input)
     {
-        if (File.Exists(input) && input.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase))
+        if (File.Exists(input)
+            && (input.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase) || input.EndsWith(".vbproj", StringComparison.OrdinalIgnoreCase)))
             return Path.GetFullPath(input);
 
         if (Directory.Exists(input))
         {
-            var found = Directory.GetFiles(Path.GetFullPath(input), "*.csproj");
+            string dir = Path.GetFullPath(input);
+            var found = Directory.GetFiles(dir, "*.csproj");
             if (found.Length == 1) return found[0];
+            if (found.Length == 0)
+            {
+                var vb = Directory.GetFiles(dir, "*.vbproj");
+                if (vb.Length == 1) return vb[0];
+            }
         }
         return null;
     }

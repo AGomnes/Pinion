@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 using CsCheck;
 using Microsoft.CodeAnalysis;
 
@@ -179,7 +179,11 @@ internal sealed partial class CSharpDeterministicSynthesizer
                 break;
 
             case SpecialType.System_Boolean:
-                values.Add("true"); values.Add("false");
+                // false first: gate-like flags (isExempt, skipValidation, dryRun) short-circuit the whole
+                // method when true, and the one-hot base value is held across EVERY other row — a true
+                // base starves all the mined-constant rows (found generating for VB CalculateVat, where
+                // every outcome was the isExempt early-return).
+                values.Add("false"); values.Add("true");
                 break;
 
             case SpecialType.System_Char:
@@ -227,7 +231,7 @@ internal sealed partial class CSharpDeterministicSynthesizer
     /// </summary>
     private List<string> ConstructionVariants(INamedTypeSymbol type, Mined mined)
     {
-        string fq = type.ToDisplayString(FullyQualified);
+        string fq = Fq(type);
         var ctor = AccessibleCtor(type);
         if (ctor is null) return new() { $"default({fq})!" };
         // Object initializer for any `required` member the ctor doesn't set (else CS9035). Suffixed to
@@ -389,8 +393,8 @@ internal sealed partial class CSharpDeterministicSynthesizer
         // Generic strategy interfaces → the BCL default comparer for the element type.
         if (type is INamedTypeSymbol { IsGenericType: true } g && g.TypeArguments.Length == 1)
         {
-            string arg = g.TypeArguments[0].ToDisplayString(FullyQualified);
-            switch (g.OriginalDefinition.ToDisplayString(FullyQualified))
+            string arg = Fq(g.TypeArguments[0]);
+            switch (Fq(g.OriginalDefinition))
             {
                 case "global::System.Collections.Generic.IComparer<T>":
                     return $"global::System.Collections.Generic.Comparer<{arg}>.Default";
@@ -399,7 +403,7 @@ internal sealed partial class CSharpDeterministicSynthesizer
             }
         }
 
-        return type.ToDisplayString(FullyQualified) switch
+        return Fq(type) switch
         {
             "global::System.IFormatProvider" => "global::System.Globalization.CultureInfo.InvariantCulture",
             "global::System.Globalization.CultureInfo" => "global::System.Globalization.CultureInfo.InvariantCulture",
@@ -417,7 +421,7 @@ internal sealed partial class CSharpDeterministicSynthesizer
 
     private static List<string> EnumMembers(ITypeSymbol enumType) =>
         enumType.GetMembers().OfType<IFieldSymbol>().Where(f => f.IsConst)
-            .Select(f => enumType.ToDisplayString(FullyQualified) + "." + f.Name)
+            .Select(f => Fq(enumType) + "." + f.Name)
             .Take(MaxCandidatesPerParam).ToList();
 
     private static string FmtDecimal(decimal v) => v.ToString(CultureInfo.InvariantCulture) + "m";
@@ -441,7 +445,7 @@ internal sealed partial class CSharpDeterministicSynthesizer
 
     private string BuildSut(INamedTypeSymbol type)
     {
-        string fq = type.ToDisplayString(FullyQualified);
+        string fq = Fq(type);
         var ctor = AccessibleCtor(type);
         if (ctor is not null)
         {
@@ -466,7 +470,7 @@ internal sealed partial class CSharpDeterministicSynthesizer
     /// </summary>
     private static string? StaticFactory(INamedTypeSymbol type)
     {
-        string fq = type.ToDisplayString(FullyQualified);
+        string fq = Fq(type);
         bool Yields(ITypeSymbol t) => SymbolEqualityComparer.Default.Equals(t, type);
 
         var prop = type.GetMembers().OfType<IPropertySymbol>()
@@ -551,7 +555,7 @@ internal sealed partial class CSharpDeterministicSynthesizer
     /// <summary>Register a stub class for the interface once and return `new __Stub()`.</summary>
     private string StubInstance(INamedTypeSymbol iface)
     {
-        string fq = iface.ToDisplayString(FullyQualified);
+        string fq = Fq(iface);
         if (!_stubs.TryGetValue(fq, out var s))
         {
             s = ($"__Stub_{SafeId(iface.Name)}_{ShortHash(fq)}", iface);
@@ -562,7 +566,7 @@ internal sealed partial class CSharpDeterministicSynthesizer
 
     private void EmitStub(System.Text.StringBuilder sb, string name, INamedTypeSymbol iface)
     {
-        sb.AppendLine($"    private sealed class {name} : {iface.ToDisplayString(FullyQualified)}");
+        sb.AppendLine($"    private sealed class {name} : {Fq(iface)}");
         sb.AppendLine("    {");
         var seen = new HashSet<string>(StringComparer.Ordinal);
         foreach (var m in StubMembers(iface))
@@ -575,13 +579,13 @@ internal sealed partial class CSharpDeterministicSynthesizer
                     if (method.ReturnsVoid)
                         sb.AppendLine($"        public void {method.Name}({pars}) {{ }}");
                     else
-                        sb.AppendLine($"        public {method.ReturnType.ToDisplayString(FullyQualified)} {method.Name}({pars}) => {ValueDefault(method.ReturnType)};");
+                        sb.AppendLine($"        public {Fq(method.ReturnType)} {method.Name}({pars}) => {ValueDefault(method.ReturnType)};");
                     break;
                 case IPropertySymbol { IsAbstract: true } prop:
                     EmitStubProperty(sb, prop);
                     break;
                 case IEventSymbol { IsAbstract: true } ev:
-                    sb.AppendLine($"        public event {ev.Type.ToDisplayString(FullyQualified)} {ev.Name} {{ add {{ }} remove {{ }} }}");
+                    sb.AppendLine($"        public event {Fq(ev.Type)} {ev.Name} {{ add {{ }} remove {{ }} }}");
                     break;
             }
         }
@@ -589,11 +593,11 @@ internal sealed partial class CSharpDeterministicSynthesizer
     }
 
     private static string StubParam(IParameterSymbol p) =>
-        (p.RefKind == RefKind.In ? "in " : "") + p.Type.ToDisplayString(FullyQualified) + " " + p.Name;
+        (p.RefKind == RefKind.In ? "in " : "") + Fq(p.Type) + " " + p.Name;
 
     private void EmitStubProperty(System.Text.StringBuilder sb, IPropertySymbol prop)
     {
-        string t = prop.Type.ToDisplayString(FullyQualified);
+        string t = Fq(prop.Type);
         string getter = prop.GetMethod is not null ? $"get => {ValueDefault(prop.Type)}; " : "";
         string setter = prop.SetMethod is null ? "" : prop.SetMethod.IsInitOnly ? "init { } " : "set { } ";
         if (prop.IsIndexer)
@@ -608,24 +612,24 @@ internal sealed partial class CSharpDeterministicSynthesizer
     {
         if (t is INamedTypeSymbol n)
         {
-            switch (n.OriginalDefinition.ToDisplayString())
+            switch (Def(n.OriginalDefinition))
             {
                 case "System.Threading.Tasks.Task": return "global::System.Threading.Tasks.Task.CompletedTask";
                 case "System.Threading.Tasks.ValueTask": return "default";
                 case "System.Threading.Tasks.Task<TResult>":
-                    return $"global::System.Threading.Tasks.Task.FromResult<{n.TypeArguments[0].ToDisplayString(FullyQualified)}>({ValueDefault(n.TypeArguments[0])})";
+                    return $"global::System.Threading.Tasks.Task.FromResult<{Fq(n.TypeArguments[0])}>({ValueDefault(n.TypeArguments[0])})";
                 case "System.Threading.Tasks.ValueTask<TResult>":
-                    return $"new global::System.Threading.Tasks.ValueTask<{n.TypeArguments[0].ToDisplayString(FullyQualified)}>({ValueDefault(n.TypeArguments[0])})";
+                    return $"new global::System.Threading.Tasks.ValueTask<{Fq(n.TypeArguments[0])}>({ValueDefault(n.TypeArguments[0])})";
             }
         }
         if (KnownFrameworkValue(t) is { } k) return k;
         if (t.TypeKind == TypeKind.Interface && IsListLike(t) && ElementType(t) is { } el)
-            return $"global::System.Array.Empty<{el.ToDisplayString(FullyQualified)}>()";
-        return $"default({t.ToDisplayString(FullyQualified)})!";
+            return $"global::System.Array.Empty<{Fq(el)}>()";
+        return $"default({Fq(t)})!";
     }
 
     private static bool IsListLike(ITypeSymbol t) =>
-        t.OriginalDefinition.ToDisplayString() is
+        Def(t.OriginalDefinition) is
             "System.Collections.Generic.IEnumerable<T>" or "System.Collections.Generic.ICollection<T>"
             or "System.Collections.Generic.IList<T>" or "System.Collections.Generic.IReadOnlyCollection<T>"
             or "System.Collections.Generic.IReadOnlyList<T>";
@@ -654,7 +658,7 @@ internal sealed partial class CSharpDeterministicSynthesizer
         if (first is not null) return first;
 
         if (type.TypeKind == TypeKind.Enum)
-            return EnumMembers(type).FirstOrDefault() ?? $"default({type.ToDisplayString(FullyQualified)})";
+            return EnumMembers(type).FirstOrDefault() ?? $"default({Fq(type)})";
 
         if (depth <= 3)
         {
@@ -665,7 +669,7 @@ internal sealed partial class CSharpDeterministicSynthesizer
             if (type is INamedTypeSymbol named && AccessibleCtor(named) is { } ctor)
             {
                 var args = ctor.Parameters.Select(p => BuildValue(p.Type, depth + 1));
-                return $"new {named.ToDisplayString(FullyQualified)}({string.Join(", ", args)}){RequiredInitializer(named, ctor, new Mined())}";
+                return $"new {Fq(named)}({string.Join(", ", args)}){RequiredInitializer(named, ctor, new Mined())}";
             }
         }
 
@@ -675,7 +679,7 @@ internal sealed partial class CSharpDeterministicSynthesizer
         if (depth <= 2 && type is INamedTypeSymbol { TypeKind: TypeKind.Interface } iface && CanStub(iface))
             return StubInstance(iface);
 
-        return $"default({type.ToDisplayString(FullyQualified)})!";
+        return $"default({Fq(type)})!";
     }
 
     private static IMethodSymbol? AccessibleCtor(INamedTypeSymbol type)
@@ -708,7 +712,7 @@ internal sealed partial class CSharpDeterministicSynthesizer
         if (type is INamedTypeSymbol named
             && named.InstanceConstructors.Any(c => c.Parameters.Length == 0 && c.DeclaredAccessibility == Accessibility.Public))
         {
-            string fq = named.ToDisplayString(FullyQualified);
+            string fq = Fq(named);
             bool hasAdd = named.GetMembers("Add").OfType<IMethodSymbol>()
                 .Any(m => m.Parameters.Length == 1 && m.DeclaredAccessibility == Accessibility.Public);
             return hasAdd ? $"new {fq} {{ {element} }}" : $"new {fq}()"; // empty when no Add (compiles; drops the element)
@@ -718,7 +722,7 @@ internal sealed partial class CSharpDeterministicSynthesizer
     }
 
     private static bool IsArrayCompatibleInterface(ITypeSymbol t) =>
-        t.TypeKind == TypeKind.Interface && t.OriginalDefinition.ToDisplayString() is
+        t.TypeKind == TypeKind.Interface && Def(t.OriginalDefinition) is
             "System.Collections.Generic.IEnumerable<T>" or "System.Collections.Generic.ICollection<T>"
             or "System.Collections.Generic.IList<T>" or "System.Collections.Generic.IReadOnlyCollection<T>"
             or "System.Collections.Generic.IReadOnlyList<T>"
@@ -730,7 +734,7 @@ internal sealed partial class CSharpDeterministicSynthesizer
         if (type is IArrayTypeSymbol arr) return arr.ElementType;
 
         if (type is INamedTypeSymbol n && n.IsGenericType && n.TypeArguments.Length == 1
-            && n.OriginalDefinition.ToDisplayString().StartsWith("System.Collections.Generic.", StringComparison.Ordinal))
+            && Def(n.OriginalDefinition).StartsWith("System.Collections.Generic.", StringComparison.Ordinal))
             return n.TypeArguments[0];
 
         var ienum = type.AllInterfaces.FirstOrDefault(i => i.Name == "IEnumerable" && i.TypeArguments.Length == 1);

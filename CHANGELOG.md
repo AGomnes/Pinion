@@ -29,7 +29,11 @@ First release candidate — the full local-first workflow, pending public publis
 - `accept` — re-baseline intended behavior changes.
 - `prove` — mutation-test the generated suite (Stryker.NET) for a regression-catching score.
 - `ci` — scaffold a GitHub Actions / Azure DevOps behavior gate.
-- VB.NET `analyze` adapter (parity with C# on complexity, blast radius, tags, landmines, tests).
+- VB.NET support across `analyze` **and** `generate`: the analyze adapter reaches parity with C#
+  (complexity, blast radius, tags, landmines, tests), and deterministic synthesis resolves and mines
+  branch constants out of VB syntax (`Select Case`, `Case Is`/ranges, comparisons) to emit a **C#**
+  characterization test against the VB assembly — one golden-master pipeline for both .NET languages.
+  `init-tests` accepts a `.vbproj`; the AI providers stay C#-only.
 - Licensing: offline signed (ECDSA P-256) license gate; `license activate` / `verify` / `machine-id`;
   near-expiry renewal nudge; multiple trusted keys for painless key rotation.
 - Packaging: ships as a .NET tool (`dotnet tool install -g Pinion`); tag-driven NuGet release workflow.

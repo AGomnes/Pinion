@@ -31,10 +31,19 @@ internal static class VbSourceScanLoader
         var workspace = new AdhocWorkspace();
         Solution solution = workspace.CurrentSolution;
 
+        // VB nests every declared namespace under the project's RootNamespace (default: the project
+        // name). Without it, scanned symbols carry the WRONG fully-qualified names — and a generated
+        // test calling `LegacyVb.InvoiceService` won't compile against the real assembly's
+        // `LegacyVb.LegacyVb.InvoiceService`. Best effort: explicit <RootNamespace>, else the .vbproj
+        // file name (MSBuild's default), else none (bare directory / .sln input).
+        string? rootNs = TryReadRootNamespace(targetPath);
+        var options = new Microsoft.CodeAnalysis.VisualBasic.VisualBasicCompilationOptions(
+            OutputKind.DynamicallyLinkedLibrary, rootNamespace: rootNs);
+
         var prodId = ProjectId.CreateNewId();
         solution = solution.AddProject(ProjectInfo.Create(
             prodId, VersionStamp.Default, "ScannedVbSources", "ScannedVbSources",
-            LanguageNames.VisualBasic, metadataReferences: refs));
+            LanguageNames.VisualBasic, compilationOptions: options, metadataReferences: refs));
         solution = AddDocuments(solution, prodId, production);
 
         if (tests.Count > 0)
@@ -44,12 +53,31 @@ internal static class VbSourceScanLoader
             var testId = ProjectId.CreateNewId();
             solution = solution.AddProject(ProjectInfo.Create(
                 testId, VersionStamp.Default, "ScannedVbTests", "ScannedVbTests",
-                LanguageNames.VisualBasic, metadataReferences: refs,
+                LanguageNames.VisualBasic, compilationOptions: options, metadataReferences: refs,
                 projectReferences: new[] { new ProjectReference(prodId) }));
             solution = AddDocuments(solution, testId, tests);
         }
 
         return solution;
+    }
+
+    /// <summary>The project's VB root namespace: the explicit <c>&lt;RootNamespace&gt;</c> when the input
+    /// is a .vbproj (else MSBuild's default — the project file name); null for .sln/directory inputs.</summary>
+    private static string? TryReadRootNamespace(string targetPath)
+    {
+        if (!targetPath.EndsWith(".vbproj", StringComparison.OrdinalIgnoreCase) || !File.Exists(targetPath))
+            return null;
+        try
+        {
+            var doc = System.Xml.Linq.XDocument.Load(targetPath);
+            string? explicitNs = doc.Descendants()
+                .FirstOrDefault(e => e.Name.LocalName == "RootNamespace")?.Value?.Trim();
+            return string.IsNullOrEmpty(explicitNs) ? Path.GetFileNameWithoutExtension(targetPath) : explicitNs;
+        }
+        catch
+        {
+            return Path.GetFileNameWithoutExtension(targetPath);
+        }
     }
 
     private static Solution AddDocuments(Solution solution, ProjectId projectId, IEnumerable<string> files)

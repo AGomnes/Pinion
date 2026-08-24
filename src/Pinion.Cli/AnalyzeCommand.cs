@@ -229,8 +229,9 @@ internal static class AnalyzeCommand
         catch { return false; }
     }
 
-    /// <summary>VB.NET input: a <c>.vbproj</c> file, or a directory whose only project is a <c>.vbproj</c>.</summary>
-    private static bool IsVisualBasic(string input)
+    /// <summary>VB.NET input: a <c>.vbproj</c> file, or a directory whose only project is a <c>.vbproj</c>.
+    /// Internal — GenerateCommand routes with the same rule so analyze and generate always agree.</summary>
+    internal static bool IsVisualBasic(string input)
     {
         if (File.Exists(input)) return input.EndsWith(".vbproj", StringComparison.OrdinalIgnoreCase);
         if (Directory.Exists(input))
