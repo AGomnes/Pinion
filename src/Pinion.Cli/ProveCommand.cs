@@ -20,7 +20,7 @@ internal static class ProveCommand
         };
         var licenseOption = new Option<string?>("--license")
         {
-            Description = "Paid-tier license key (else PINION_LICENSE / pinion.license file).",
+            Description = "License key (else PINION_LICENSE / pinion.license file). Dormant: nothing is gated.",
         };
         var verboseOption = new Option<bool>("--verbose", "-v") { Description = "Print diagnostics to stderr." };
         var reportJsonOption = new Option<FileInfo?>("--report-json")

@@ -434,8 +434,15 @@ sample's *deterministic* tests, **no AI**):
 | + **property-based sampling** (CsCheck: deterministic joint-random rows for numeric methods) | **74%** | InvoiceService **37% → 77%** |
 | + **conjunctive guard solver** (a witness + one near-miss per guard: length / char-class / affix) | —<sup>†</sup> | AuthHandler **58% → 81%** |
 | + **regex guard solver** (synthesize a string that *matches* a `Regex.IsMatch` pattern, + a non-match) | —<sup>†</sup> | SkuValidator **75% → 100%** |
+| + **constructed stubs** (a stubbed dependency returns an object, not `null`) + **protected-method probes** | **78.6%** | HardCases **46% → 87%**, SkuValidator **0% → 100%** |
 
 <sup>†</sup> Measured method-scoped this pass (AuthHandler 57.69% → 80.77%; SkuValidator 75% → 100% — a small method, so a mechanism proof more than a big-sample showcase). Stryker 4.14, identical config before/after; the whole-sample overall wasn't re-run.
+
+**The score depends heavily on how much you lock.** The 78.6% row is the whole sample with
+`--top 80 --max-targets 80`. The identical generator on the identical code scores **60.4%** at
+`--top 20`, because 49 mutants sit in methods that were never targeted rather than in methods the tests
+failed to pin. `--max-targets` defaults to **25**, so a first run on a large codebase measures your
+coverage choice more than it measures the generator. Raise it before drawing conclusions.
 
 So the generator clears length/letter/digit guards, reaches `int.TryParse` success branches, pins the
 behavior in `out`/`ref` parameters, **constructs parameter objects whose fields carry the mined branch
