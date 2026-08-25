@@ -108,11 +108,30 @@ internal sealed partial class CSharpDeterministicSynthesizer : IDisposable
         if (method.IsGenericMethod || method.ContainingType.IsGenericType)
             throw new NotSupportedException("generic methods/types aren't supported by the deterministic generator yet — try --provider anthropic.");
 
-        if (method.DeclaredAccessibility != Accessibility.Public)
+        if (method.DeclaredAccessibility != Accessibility.Public && !CanReachViaProbe(method))
             throw new NotSupportedException($"method is not public ({unit.DisplayName} is {method.DeclaredAccessibility.ToString().ToLowerInvariant()}).");
         if (method.ContainingType.DeclaredAccessibility != Accessibility.Public)
             throw new NotSupportedException($"containing type is not public ({method.ContainingType.Name} is {method.ContainingType.DeclaredAccessibility.ToString().ToLowerInvariant()}).");
     }
+
+    /// <summary>
+    /// Whether a non-public method can still be characterized by deriving from its type. A protected
+    /// member is invisible to a test in another assembly, but a subclass declared inside the test can
+    /// see it and re-expose it publicly.
+    ///
+    /// This matters more than it sounds: on nopCommerce, protected methods were ~45% of everything the
+    /// generator attempted and failed, and they are the substantial internal calculations
+    /// (OrderTotalCalculationService.UpdateTaxRatesAsync, ImportManager.PrepareImportProductDataAsync)
+    /// rather than trivia.
+    /// </summary>
+    internal static bool CanReachViaProbe(IMethodSymbol method) =>
+        method.DeclaredAccessibility is Accessibility.Protected or Accessibility.ProtectedOrInternal
+        && !method.IsAbstract                       // nothing to call: there is no base implementation
+        && !method.IsStatic                         // the probe is an instance; static needs no subclass
+        && method.MethodKind == MethodKind.Ordinary
+        && method.ContainingType is { IsSealed: false, IsStatic: false, IsAbstract: false, TypeKind: TypeKind.Class }
+        && method.ContainingType.InstanceConstructors.Any(c =>
+            c.DeclaredAccessibility is Accessibility.Public or Accessibility.Protected or Accessibility.ProtectedOrInternal);
 
     /// <summary>VB solution, cached per source root (parallel to <see cref="GetSolutionAsync"/>).</summary>
     private async Task<Solution> GetVbSolutionAsync(string sourceRoot, CancellationToken ct)
@@ -304,7 +323,12 @@ internal sealed partial class CSharpDeterministicSynthesizer : IDisposable
         sb.AppendLine($"    public async Task {testMethodName}_characterization()");
         sb.AppendLine("    {");
         sb.AppendLine("        var entries = new List<object>();");
-        if (!isStatic && !isCtor) sb.AppendLine($"        var sut = {BuildSut(method.ContainingType)};");
+        // A protected target is reached through a generated subclass that re-exposes it publicly.
+        bool viaProbe = method.DeclaredAccessibility != Accessibility.Public && CanReachViaProbe(method);
+        if (!isStatic && !isCtor)
+            sb.AppendLine(viaProbe
+                ? $"        var sut = new {ProbeName(method)}();"
+                : $"        var sut = {BuildSut(method.ContainingType)};");
         sb.AppendLine();
 
         foreach (var row in rows)
@@ -347,10 +371,26 @@ internal sealed partial class CSharpDeterministicSynthesizer : IDisposable
         sb.AppendLine("        await Verify(entries, settings);");
         sb.AppendLine("    }");
 
-        foreach (var (name, iface) in _stubs.Values.OrderBy(s => s.Name, StringComparer.Ordinal))
+        // The probe is emitted after the stubs because building it can register more of them: its base
+        // constructor arguments go through the same value builder as any other dependency.
+        if (viaProbe)
         {
+            string probe = BuildProbeClass(method);
+            foreach (var (name, iface) in _stubs.Values.OrderBy(s => s.Name, StringComparer.Ordinal))
+            {
+                sb.AppendLine();
+                EmitStub(sb, name, iface);
+            }
             sb.AppendLine();
-            EmitStub(sb, name, iface);
+            sb.Append(probe);
+        }
+        else
+        {
+            foreach (var (name, iface) in _stubs.Values.OrderBy(s => s.Name, StringComparer.Ordinal))
+            {
+                sb.AppendLine();
+                EmitStub(sb, name, iface);
+            }
         }
 
         sb.AppendLine("}");

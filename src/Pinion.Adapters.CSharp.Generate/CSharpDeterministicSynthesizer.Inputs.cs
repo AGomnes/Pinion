@@ -431,6 +431,45 @@ internal sealed partial class CSharpDeterministicSynthesizer
         return StaticFactory(type) ?? $"default({fq})!";
     }
 
+    /// <summary>The name of the probe subclass generated to reach a protected method.</summary>
+    private static string ProbeName(IMethodSymbol method) =>
+        $"__Probe_{SafeId(method.ContainingType.Name)}_{ShortHash(Fq(method.ContainingType) + "." + method.Name)}";
+
+    /// <summary>
+    /// A subclass, declared inside the generated test, that re-exposes a protected method as public so
+    /// the test can call it. The forwarder keeps the ORIGINAL name and signature and shadows the base
+    /// member with `new`, so every call site downstream stays `sut.Method(args)` and needs no special
+    /// casing. Ref/out modifiers are carried through, since dropping them would not compile.
+    /// </summary>
+    private string BuildProbeClass(IMethodSymbol method)
+    {
+        var type = method.ContainingType;
+        var ctor = type.InstanceConstructors
+            .Where(c => c.DeclaredAccessibility is Accessibility.Public or Accessibility.Protected or Accessibility.ProtectedOrInternal)
+            .OrderBy(c => c.Parameters.Length)
+            .First();
+
+        string baseArgs = string.Join(", ", ctor.Parameters.Select(p => BuildValue(p.Type, 1)));
+        string name = ProbeName(method);
+
+        string Decl(IParameterSymbol p) =>
+            (p.RefKind switch { RefKind.Ref => "ref ", RefKind.Out => "out ", RefKind.In => "in ", _ => "" })
+            + Fq(p.Type) + " " + SafeId(p.Name);
+        string Pass(IParameterSymbol p) =>
+            (p.RefKind switch { RefKind.Ref => "ref ", RefKind.Out => "out ", _ => "" }) + SafeId(p.Name);
+
+        string pars = string.Join(", ", method.Parameters.Select(Decl));
+        string args = string.Join(", ", method.Parameters.Select(Pass));
+
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine($"    private sealed class {name} : {Fq(type)}");
+        sb.AppendLine("    {");
+        sb.AppendLine($"        public {name}() : base({baseArgs}) {{ }}");
+        sb.AppendLine($"        public new {Fq(method.ReturnType)} {method.Name}({pars}) => base.{method.Name}({args});");
+        sb.AppendLine("    }");
+        return sb.ToString();
+    }
+
     /// <summary>
     /// A public static member on <paramref name="type"/> that yields an instance of it. Deterministic:
     /// candidates are sorted by name and the cleanest source is preferred — a parameterless property

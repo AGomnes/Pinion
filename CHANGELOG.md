@@ -9,6 +9,19 @@ The **generated test/snapshot format** is versioned separately and stamped into 
 
 ## [Unreleased]
 
+### Added
+- **Protected methods are now characterizable.** A test in another assembly cannot call a protected
+  member, so the generator previously refused them. It now derives a probe subclass inside the test
+  that re-exposes the method publicly and forwards to `base`, keeping the original name and signature
+  (ref/out modifiers included) so every call site downstream is unchanged. Applies to non-sealed,
+  non-abstract classes with a constructor reachable from a derived type; abstract and static members
+  still skip.
+
+  Measured on nopCommerce's top 150 high-risk untested methods: synthesis went from **14/25 to
+  25/25**, with protected members having been ~45% of every attempted failure. They are the substantial
+  internal calculations (`OrderTotalCalculationService.UpdateTaxRatesAsync`,
+  `ImportManager.PrepareImportProductDataAsync`), not trivia.
+
 ### Changed
 - **Generated interface stubs now return a constructed instance instead of `null`** when the return
   type has an accessible parameterless constructor. Stub-driven characterization was near-worthless on

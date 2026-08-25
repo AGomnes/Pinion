@@ -171,3 +171,20 @@ public sealed class SurchargeCalculator
         return amount + card.Surcharge;
     }
 }
+
+/// <summary>A protected calculation on a non-sealed class — the shape that dominated the generator's
+/// failures on real code (nopCommerce: OrderTotalCalculationService.UpdateTaxRatesAsync,
+/// ImportManager.PrepareImportProductDataAsync). A test in another assembly can't call it directly, so
+/// the synthesizer derives a probe class that re-exposes it.</summary>
+public class ShippingRules
+{
+    public decimal Quote(decimal weight) => ComputeSurcharge(weight);
+
+    protected decimal ComputeSurcharge(decimal weight)
+    {
+        if (weight <= 0m) return 0m;
+        if (weight > 100m) return weight * 0.5m;
+        if (weight > 20m) return weight * 0.25m;
+        return 5m;
+    }
+}

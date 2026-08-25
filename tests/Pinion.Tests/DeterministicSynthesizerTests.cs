@@ -273,6 +273,31 @@ public class DeterministicSynthesizerTests
     }
 
     [Fact]
+    public void Protected_method_is_reached_through_a_generated_probe_subclass()
+    {
+        // Protected members are invisible to a test in another assembly. On nopCommerce this was ~45%
+        // of everything the generator attempted and failed, and they were the substantial internal
+        // calculations rather than trivia. A subclass declared inside the test can see them.
+        // UnitAt() assumes a `public` declaration, which this deliberately is not, so locate it directly.
+        string file = HardCases();
+        var lines = File.ReadAllLines(file);
+        int idx = Array.FindIndex(lines, l => l.Contains("protected decimal ComputeSurcharge("));
+        Assert.True(idx >= 0, "ComputeSurcharge declaration not found in the sample");
+
+        var unit = new CodeUnit("S.ShippingRules.ComputeSurcharge(decimal)", "ShippingRules.ComputeSurcharge",
+            file, idx + 1, idx + 8, "sig", Array.Empty<ParamInfo>(), "decimal", 1, 8,
+            Array.Empty<string>(), Array.Empty<string>(), Array.Empty<string>(), false, false, Array.Empty<string>());
+
+        string src = new CSharpTestGenerator().SynthesizeDeterministic(
+            unit, Path.Combine(RepoRoot(), "samples", "LegacyShop"), default);
+
+        Assert.Contains(": global::LegacyShop.ShippingRules", src);          // derives from the real type
+        Assert.Contains("public new decimal ComputeSurcharge(decimal", src); // re-exposed publicly
+        Assert.Contains("=> base.ComputeSurcharge(", src);                   // forwards to the original
+        Assert.Contains("var sut = new __Probe_ShippingRules", src);         // and the test uses it
+    }
+
+    [Fact]
     public void Synthesis_is_deterministic()
     {
         string root = RepoRoot();
