@@ -298,6 +298,26 @@ public class DeterministicSynthesizerTests
     }
 
     [Fact]
+    public void Nullable_element_array_is_explicitly_typed()
+    {
+        // `new[] { null }` has no best type: CS0826/CS1503. Found on nopCommerce.
+        string src = Synth("CountNames");
+        Assert.Contains("new string[] { null }", src);
+        Assert.DoesNotContain("new[] { null }", src);
+    }
+
+    [Fact]
+    public void Delegate_parameter_becomes_a_lambda_not_a_constructor_call()
+    {
+        // Delegates expose a compiler-provided (object, IntPtr) ctor, so a naive "pick the accessible
+        // ctor" emits new Func<…>(default(object)!, default(nint)!) and fails with CS0149.
+        string src = Synth("ApplyTwice");
+        Assert.Contains("=>", src);
+        Assert.DoesNotContain("default(nint)", src);
+        Assert.DoesNotContain("new global::System.Func", src);
+    }
+
+    [Fact]
     public void Synthesis_is_deterministic()
     {
         string root = RepoRoot();

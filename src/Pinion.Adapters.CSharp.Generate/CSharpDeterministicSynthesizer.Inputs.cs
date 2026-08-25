@@ -619,6 +619,7 @@ internal sealed partial class CSharpDeterministicSynthesizer
                     return $"new global::System.Threading.Tasks.ValueTask<{Fq(n.TypeArguments[0])}>({ValueDefault(n.TypeArguments[0])})";
             }
         }
+        if (t is INamedTypeSymbol { TypeKind: TypeKind.Delegate } del) return DelegateLiteral(del);
         if (KnownFrameworkValue(t) is { } k) return k;
         if (t.TypeKind == TypeKind.Interface && IsListLike(t) && ElementType(t) is { } el)
             return $"global::System.Array.Empty<{Fq(el)}>()";
@@ -664,6 +665,7 @@ internal sealed partial class CSharpDeterministicSynthesizer
     {
         type = Unwrap(type);
 
+        if (type is INamedTypeSymbol { TypeKind: TypeKind.Delegate } dlg) return DelegateLiteral(dlg);
         if (KnownFrameworkValue(type) is { } known) return known;
 
         var first = Unwrap(type).SpecialType switch
@@ -702,9 +704,33 @@ internal sealed partial class CSharpDeterministicSynthesizer
         return $"default({Fq(type)})!";
     }
 
+    /// <summary>
+    /// A lambda standing in for a delegate-typed value, with the right arity and a default result.
+    ///
+    /// Delegates must never be built through a constructor. Roslyn exposes the compiler-provided
+    /// <c>(object, IntPtr)</c> constructor as a real instance constructor, so a naive "pick the
+    /// accessible ctor" emits <c>new Func&lt;…&gt;(default(object)!, default(nint)!)</c>, which is not
+    /// valid C# and fails with CS0149 "Method name expected" (found on nopCommerce).
+    /// </summary>
+    private string DelegateLiteral(INamedTypeSymbol type)
+    {
+        var invoke = type.DelegateInvokeMethod;
+        if (invoke is null) return $"default({Fq(type)})!";
+
+        string pars = invoke.Parameters.Length switch
+        {
+            0 => "()",
+            _ => "(" + string.Join(", ", invoke.Parameters.Select((_, i) => $"__a{i}")) + ")",
+        };
+
+        return invoke.ReturnsVoid
+            ? $"{pars} => {{ }}"
+            : $"{pars} => {ValueDefault(invoke.ReturnType)}";
+    }
+
     private static IMethodSymbol? AccessibleCtor(INamedTypeSymbol type)
     {
-        if (type.TypeKind is TypeKind.Interface or TypeKind.Enum || type.IsAbstract) return null;
+        if (type.TypeKind is TypeKind.Interface or TypeKind.Enum or TypeKind.Delegate || type.IsAbstract) return null;
         return type.InstanceConstructors
             .Where(c => c.DeclaredAccessibility == Accessibility.Public)
             .OrderBy(c => c.Parameters.Length)
@@ -727,7 +753,14 @@ internal sealed partial class CSharpDeterministicSynthesizer
     private static string CollectionLiteral(ITypeSymbol type, string element)
     {
         if (type is IArrayTypeSymbol || IsArrayCompatibleInterface(type))
-            return $"new[] {{ {element} }}";
+        {
+            // Explicitly typed, not `new[] { … }`. When the element expression is `null` or `default`
+            // there is no best type to infer and the generated test fails to compile with CS0826/CS1503
+            // (found on nopCommerce: a string[] parameter whose candidate value was null).
+            return ElementType(type) is { } el
+                ? $"new {Fq(el)}[] {{ {element} }}"
+                : $"new[] {{ {element} }}";
+        }
 
         if (type is INamedTypeSymbol named
             && named.InstanceConstructors.Any(c => c.Parameters.Length == 0 && c.DeclaredAccessibility == Accessibility.Public))

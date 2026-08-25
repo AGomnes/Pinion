@@ -7,6 +7,20 @@ All notable changes to Pinion are documented here. The format follows
 The **generated test/snapshot format** is versioned separately and stamped into every generated test
 (`// pinion-format: N`); a bump there is called out under the release that changes it.
 
+## [Unreleased]
+
+### Fixed
+- Two shapes produced generated tests that did not compile, both found by running the full pipeline on
+  nopCommerce and both invisible to the sample suite because nothing exercised them:
+  - An array parameter whose candidate value is `null` emitted `new[] { null }`, which has no best type
+    (CS0826/CS1503). Arrays are now explicitly typed.
+  - A delegate parameter was built through a constructor. Delegates expose a compiler-provided
+    `(object, IntPtr)` constructor that Roslyn reports as a real instance constructor, so the generator
+    emitted `new Func<…>(default(object)!, default(nint)!)` and failed with CS0149. Delegates now become
+    lambdas of the right arity returning a default result.
+
+  With both fixed, nopCommerce goes from 21/23 to **23/23 characterized, zero failures**.
+
 ## [1.2.0] - 2026-08-25
 
 ### Added

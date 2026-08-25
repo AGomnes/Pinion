@@ -5,7 +5,7 @@ untested .NET e-commerce platform (tax, pricing, orders, discounts). Nothing her
 are from `Nop.Services` exactly as it ships. Everything below ran **locally, offline, with no API key,
 for $0** using the deterministic generator.
 
-Measured on **Pinion 1.2.0**. Reproduce with:
+Measured on **Pinion 1.2.1**. Reproduce with:
 `pinion analyze <Nop.Services.csproj>` → `pinion generate … -p <host.csproj>` → `pinion verify <host.csproj>`.
 
 ---
@@ -42,16 +42,17 @@ them against the real code, and captured the actual output as golden masters:
 
 ```
 Skipped 37 method(s) tagged io that may touch the filesystem/DB/network when run.
-Done: 21/23 characterized (deterministic, $0).
+Done: 23/23 characterized (deterministic, $0).
 ```
 
-**21 of 23** heavily dependency-injected service methods locked, with no AI and no cost. Where a service
+**23 of 23** heavily dependency-injected service methods locked, with no AI and no cost. Where a service
 injects collaborators it cannot construct, Pinion generates stub implementations so the method runs
 against inert collaborators instead of dying on a null. Protected methods — a large share of the
 substantial internal calculations here — are reached through a generated subclass that re-exposes them.
 
-The 2 it could not lock were **reported, not silently dropped**: their generated tests failed to compile,
-so they were isolated and named, and the rest of the batch still completed.
+Nothing was skipped for being too hard to synthesize. When a generated test does fail to compile it is
+isolated and named rather than silently dropped, and the rest of the batch still completes — that
+mechanism is what surfaced the last two generator bugs, both since fixed.
 
 ## 3. `verify` — prove behavior didn't change (the gate)
 
@@ -59,9 +60,9 @@ Re-running the locked suite against the current code:
 
 ```
 BEHAVIOR VERIFICATION — nopScratch.csproj
-Re-ran 21 locked method(s) against the current code.
+Re-ran 23 locked method(s) against the current code.
 
-✓ Behavior preserved: all 21 method(s) behave identically — safe to ship.   (exit 0)
+✓ Behavior preserved: all 23 method(s) behave identically — safe to ship.   (exit 0)
 ```
 
 That is the safety net in action. **Now migrate** — .NET Framework→Core, a refactor, an AI rewrite — and
@@ -79,8 +80,8 @@ Being specific about the limits, because a safety net you misjudge is worse than
 those unless you pass `--allow-side-effects`. On a service layer that talks to a database, expect a large
 fraction to be out of reach by default. `pinion seam` exists to chip away at this.
 
-**Many recorded outcomes are exceptions rather than business results.** Across the 21 locked methods,
-**66% of recorded outcomes are `NullReferenceException` or `ArgumentNullException`** (down from 72%
+**Many recorded outcomes are exceptions rather than business results.** Across the 23 locked methods,
+**64% of recorded outcomes are `NullReferenceException` or `ArgumentNullException`** (down from 72%
 before 1.2.0, when stubs returned null and guard clauses fired immediately). The cause is depth: a stub
 returns a constructed object, but the properties *on* that object are still null, and DI-heavy code
 dereferences several layers down.

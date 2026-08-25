@@ -188,3 +188,17 @@ public class ShippingRules
         return 5m;
     }
 }
+
+/// <summary>Two shapes that produced NON-COMPILING generated tests until they were fixed, both found
+/// on nopCommerce and both invisible in the sample suite because nothing here exercised them.</summary>
+public sealed class EdgeShapes
+{
+    /// <summary>A string[] whose candidate value can be null. An implicitly-typed `new[] { null }` has
+    /// no best type and fails with CS0826/CS1503, so the array must be explicitly typed.</summary>
+    public int CountNames(string[] names) => names is null ? -1 : names.Length;
+
+    /// <summary>A delegate parameter. Delegates expose a compiler-provided (object, IntPtr) constructor
+    /// that Roslyn reports as a real instance ctor, so constructing one emits
+    /// `new Func&lt;…&gt;(default(object)!, default(nint)!)` and fails with CS0149. A lambda is required.</summary>
+    public int ApplyTwice(Func<int, int> f, int seed) => f is null ? -1 : f(f(seed));
+}
