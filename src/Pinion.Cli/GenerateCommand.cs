@@ -198,7 +198,18 @@ internal static class GenerateCommand
 
             var targets = runnable.Take(Math.Max(1, maxTargets)).ToList();
             if (runnable.Count > targets.Count)
-                Console.Error.WriteLine($"Selected {runnable.Count} methods; capping to {targets.Count} (--max-targets). Raise --max-targets to do more.");
+            {
+                // Deliberately loud. The cap silently decides how much behavior gets locked, and a
+                // partial lock is easy to mistake for a weak safety net: on the bundled sample the same
+                // generator scores 60% locking 20 methods and 79% locking 80. People draw conclusions
+                // about the tool from a number that actually reflects this line.
+                Console.Error.WriteLine();
+                Console.Error.WriteLine($"⚠  Locking {targets.Count} of {runnable.Count} eligible methods — capped by --max-targets (default 25).");
+                Console.Error.WriteLine($"   The other {runnable.Count - targets.Count} stay UNLOCKED: a migration could change them without failing a test,");
+                Console.Error.WriteLine($"   and `pinion prove` will score them as uncovered.");
+                Console.Error.WriteLine($"   To lock them all:  --max-targets {runnable.Count}");
+                Console.Error.WriteLine();
+            }
 
             using var genAdapter = new CSharpTestGenerator
             {
