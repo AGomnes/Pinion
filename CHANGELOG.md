@@ -28,8 +28,10 @@ The **generated test/snapshot format** is versioned separately and stamped into 
   real service layers: measured across nopCommerce's locked methods, **72% of every recorded outcome
   was `ArgumentNullException` or `NullReferenceException`**, because a stubbed dependency returned null
   and the method's own guard clause threw before reaching any logic. That pinned the guard rather than
-  the behavior, so a migration could rewrite the logic without failing a test. After the change,
-  `ArgumentNullException` outcomes dropped to **zero** and null-related outcomes fell from 72% to 53%.
+  the behavior, so a migration could rewrite the logic without failing a test. Re-measured on a fuller run of
+  21 locked methods: `ArgumentNullException` outcomes fell from **103 to 28** and null-related outcomes
+  from **72% to 66%**. (An earlier draft of this entry claimed zero ANEs and 53%; that came from a
+  9-method subset and does not hold across the wider set. Corrected here rather than left standing.)
   Deliberately narrow: parameterless constructors only, since feeding arguments risks recursing through
   object graphs and invoking constructors with side effects. Regenerating existing tests will produce
   different (more meaningful) golden masters.
