@@ -7,7 +7,7 @@ All notable changes to Pinion are documented here. The format follows
 The **generated test/snapshot format** is versioned separately and stamped into every generated test
 (`// pinion-format: N`); a bump there is called out under the release that changes it.
 
-## [Unreleased]
+## [1.2.1] - 2026-08-26
 
 ### Fixed
 - Two shapes produced generated tests that did not compile, both found by running the full pipeline on
