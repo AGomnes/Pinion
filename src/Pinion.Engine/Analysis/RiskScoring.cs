@@ -75,7 +75,7 @@ public static class RiskScorer
             new("domain", weights.Domain, domainSensitivity,
                 unit.DomainTags.Count == 0 ? "no domain tags" : string.Join("+", unit.DomainTags)),
             new("blast-radius", weights.Callers, Norm(unit.CallerIds.Count, norm.CallerCountCap),
-                $"{unit.CallerIds.Count} callers"),
+                $"{unit.CallerIds.Count} caller{(unit.CallerIds.Count == 1 ? "" : "s")}"),
             new("size", weights.Size, Norm(unit.LineCount, norm.LineCountCap),
                 $"{unit.LineCount} lines"),
             new("landmine", weights.Landmine, hasLandmine ? 1 : 0,

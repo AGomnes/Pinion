@@ -7,6 +7,21 @@ All notable changes to Pinion are documented here. The format follows
 The **generated test/snapshot format** is versioned separately and stamped into every generated test
 (`// pinion-format: N`); a bump there is called out under the release that changes it.
 
+## [Unreleased]
+
+### Changed
+- Readability pass on the `analyze` console report, from reading real output on a 4,061-method
+  codebase rather than the samples:
+  - The risk column no longer drifts. Long method names were padded but never truncated, so every
+    following field shifted right and the column could not be scanned.
+  - The new `Unavailable on <tfm>` summary line now sits in the same 26-column gutter as the lines
+    above it; the moniker varies in length, so hand-spacing could never align.
+  - CLR metadata arity is rendered for humans: `ClientBase``1` reads as `ClientBase<T>`, and nested
+    `Outer+Inner` as `Outer.Inner`.
+  - "1 callers" and "1 use(s)" are pluralized properly.
+  - The report no longer ends on a demoralizing total. "2,185 methods -> ~73 days" now carries the
+    point that nobody locks everything, plus the exact command to cover the 10 riskiest in about a day.
+
 ## [1.3.0] - 2026-08-26
 
 ### Added

@@ -9,6 +9,29 @@ internal static class ReportText
 {
     internal static readonly CultureInfo Culture = CultureInfo.InvariantCulture;
 
+    /// <summary>
+    /// A CLR metadata type name rendered for humans: <c>ClientBase`1</c> becomes <c>ClientBase&lt;T&gt;</c>
+    /// and nested <c>Outer+Inner</c> becomes <c>Outer.Inner</c>. Metadata arity is an implementation
+    /// detail of the reflection format and only distracts a reader scanning a migration report.
+    /// </summary>
+    internal static string FriendlyTypeName(string metadataName)
+    {
+        string s = metadataName.Replace('+', '.');
+        int tick = s.IndexOf('`');
+        if (tick < 0) return s;
+
+        string head = s[..tick];
+        string rest = s[(tick + 1)..];
+        int digits = 0;
+        while (digits < rest.Length && char.IsDigit(rest[digits])) digits++;
+        if (digits == 0 || !int.TryParse(rest[..digits], out int arity) || arity < 1) return head;
+
+        var names = arity == 1
+            ? new[] { "T" }
+            : Enumerable.Range(1, arity).Select(i => "T" + i).ToArray();
+        return head + "<" + string.Join(", ", names) + ">" + rest[digits..];
+    }
+
     /// <summary>"1,247" style thousands formatting, locale-independent.</summary>
     internal static string N(int value) => value.ToString("N0", Culture);
 

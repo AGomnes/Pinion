@@ -30,7 +30,9 @@ public static class ConsoleReportRenderer
         if (report.TargetFramework is { Length: > 0 } tfm)
         {
             int n = report.IncompatibleApis?.Count ?? 0;
-            sb.AppendLine($"Unavailable on {tfm}:  {(n == 0 ? "none detected" : ReportText.N(n) + " framework type(s)")}");
+            // Same 26-column label gutter as the lines above; the target moniker varies in length, so
+            // the label must be padded rather than spaced by hand.
+            sb.AppendLine($"{$"Unavailable on {tfm}:",-26}{(n == 0 ? "none detected" : ReportText.N(n) + " framework type(s)")}");
         }
         sb.AppendLine();
 
@@ -39,7 +41,7 @@ public static class ConsoleReportRenderer
             sb.AppendLine($"APIS UNAVAILABLE ON {report.TargetFramework}");
             sb.AppendLine(new string('─', 60));
             foreach (var a in apis.Take(15))
-                sb.AppendLine($"  {a.TypeName}  ({a.UsageCount} use(s))  first: {Path.GetFileName(a.FirstFilePath)}:{a.FirstLine}");
+                sb.AppendLine($"  {ReportText.FriendlyTypeName(a.TypeName)}  ({a.UsageCount} use{(a.UsageCount == 1 ? "" : "s")})  first: {Path.GetFileName(a.FirstFilePath)}:{a.FirstLine}");
             if (apis.Count > 15) sb.AppendLine($"  … and {apis.Count - 15} more");
             sb.AppendLine(new string('─', 60));
             sb.AppendLine("These must be replaced before the migration compiles. Lock the behavior of the");
@@ -66,6 +68,9 @@ public static class ConsoleReportRenderer
                 string seam = s.Unit.Seamability == Seamability.NeedsSeam && s.Unit.SeamBlockers.Count > 0
                     ? "  ⚠ needs seam: " + string.Join(", ", s.Unit.SeamBlockers.Take(2))
                     : "";
+                // Truncate rather than only pad: a name longer than the column pushes every following
+                // field right, and a risk column that does not line up cannot be scanned.
+                if (left.Length > 42) left = left[..41] + "…";
                 sb.AppendLine($"{left,-42} risk {s.Score.Total,4:0.0}  ← {ReportText.Reason(s.Score)}{seam}");
                 i++;
             }
@@ -73,6 +78,16 @@ public static class ConsoleReportRenderer
 
         sb.AppendLine(rule);
         sb.AppendLine($"Estimated behavior-lock effort: {ReportText.Effort(report.HighRiskUnprotected)}");
+
+        // That figure is the whole backlog, and on a large codebase it reads as hopeless. Nobody locks
+        // everything: the point is to cover the riskiest first, so the report ends on an action rather
+        // than on a number.
+        if (report.HighRiskUnprotected > 0)
+        {
+            int start = Math.Min(10, report.HighRiskUnprotected);
+            sb.AppendLine($"You do not have to lock all of them. Start with the {start} riskiest:");
+            sb.AppendLine($"  pinion quickstart <project> --top {start}     ({ReportText.Effort(start)})");
+        }
 
         if (report.Hotspots.Count > top.Count)
             sb.AppendLine($"({ReportText.N(report.Hotspots.Count - top.Count)} more units in the JSON/Markdown report)");
