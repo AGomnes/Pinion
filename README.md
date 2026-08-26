@@ -3,7 +3,7 @@
 > **Migrate with AI. Prove it didn't break anything.**
 >
 > Pinion locks what your legacy .NET code *does today* into runnable tests, then tells you
-> exactly what a migration changed. Runs entirely on your machine.
+> exactly what a migration changed. Free, and it runs entirely on your machine.
 
 AI migration tools will happily rewrite your .NET Framework app. They validate the result by
 checking that **your build and tests pass**, which proves almost nothing on the codebases that
@@ -505,20 +505,28 @@ the one file**, which therefore **makes zero network requests**: it opens offlin
 forever, and never leaks the analyzed code's shape to a CDN. No build step, no npm, nothing to audit —
 the same discipline as the rest of Pinion. Dark/light follows your OS.
 
-### License
+### License — free for everyone, permanently
 
-Pinion is **source-available** under the [Functional Source License 1.1 with an Apache-2.0 future
+**Pinion is free. For everyone. There is no paid version, no tier, no seat count, no key, no account,
+no activation, and nothing phones home.** A bank, a consultancy, a student, a government department,
+a competitor: all free, forever, including commercial and internal use on proprietary code.
+
+That is the whole story for anyone who wants to *use* Pinion. The rest of this section only matters if
+you want to *sell* it.
+
+Licensed under the [Functional Source License 1.1 with an Apache-2.0 future
 grant](LICENSE.md) (`FSL-1.1-ALv2`).
 
-**You may** use Pinion for *any* purpose, including commercially, inside a business, on proprietary
-code, and on client engagements as a consultant. You may read, modify, fork, and redistribute it. No
-key, no account, no activation, no seat count, no phone-home.
+**You may** use Pinion for any purpose, commercially or not; run it on proprietary code; use it on paid
+client engagements as a consultant; read, modify, fork, and redistribute it.
 
-**You may not** sell Pinion, host it as a paid service, or ship it inside a product that substitutes
-for it. That carve-out, "Competing Use", is the only right withheld.
+**You may not** sell Pinion, host it as a paid service, or ship it inside a product that substitutes for
+it. That single carve-out, "Competing Use", is the only right withheld — and it is aimed at one thing:
+stopping someone wrapping Pinion in a SaaS and charging for it. It restricts vendors, not users.
 
-**Two years after each release, that version becomes Apache-2.0 automatically**, so every version you
-receive is on a fixed path to full open source.
+**Two years after each release, that version becomes Apache-2.0 automatically**, irrevocably, with no
+restriction at all. The clock runs per version: 1.2.0 becomes Apache-2.0 in August 2028. The
+unrestricted grant is already given; it is only deferred.
 
 > **On the words "open source".** Pinion is *source-available*, not OSI-approved open source. The Open
 > Source Definition forbids restricting fields of endeavor, and the Competing Use clause does exactly
@@ -603,7 +611,7 @@ In CI, store it as a **secret** (never in the YAML) and expose it as an env var 
 ```
 
 The customer brings their own key; the vendor issues only the offline **license** (separate — see
-[License](#license)). The **local-model** path (`--base-url
+[License](#license--free-for-everyone-permanently)). The **local-model** path (`--base-url
 http://localhost:<port>`) reads the *same* variable — most local Anthropic-compatible servers accept
 any non-empty value (or a token you configure), so set `ANTHROPIC_API_KEY` to that and nothing leaves
 the machine.

@@ -57,9 +57,13 @@ running the oldest .NET, and the ones cloud-only migration tooling cannot serve.
 - **[SECURITY.md](https://github.com/AGomnes/Pinion/blob/main/SECURITY.md)** — reporting, egress, and the fact that `generate` executes your code
 - **[CHANGELOG.md](https://github.com/AGomnes/Pinion/blob/main/CHANGELOG.md)**
 
-## License
+## License — free for everyone
 
-Source-available under the [Functional Source License 1.1, Apache-2.0 future grant](https://github.com/AGomnes/Pinion/blob/main/LICENSE.md)
-(`FSL-1.1-ALv2`). Free for **all** use — commercial, internal, on proprietary code, and on client
-engagements. The only right withheld is Competing Use: reselling, rehosting, or repackaging Pinion
-itself. Each released version converts to Apache-2.0 two years after release.
+**Pinion is free, for everyone, permanently.** No paid version, no tier, no seat count, no key, no
+account, nothing phones home. Commercial and internal use on proprietary code included, and consultants
+may use it on paid client engagements.
+
+Licensed under the [Functional Source License 1.1, Apache-2.0 future grant](https://github.com/AGomnes/Pinion/blob/main/LICENSE.md)
+(`FSL-1.1-ALv2`). The only right withheld is Competing Use — selling Pinion, hosting it as a paid
+service, or shipping it inside a product that substitutes for it. That restricts vendors, not users.
+Each released version becomes Apache-2.0, unrestricted, two years after release.
