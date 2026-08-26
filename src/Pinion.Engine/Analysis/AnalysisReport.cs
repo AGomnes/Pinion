@@ -21,7 +21,9 @@ public sealed record AnalysisReport(
     IReadOnlyList<ScoredUnit> Hotspots,
     RiskWeights Weights,
     CoverageSummary? Coverage = null,
-    int SeamsToIntroduce = 0)
+    int SeamsToIntroduce = 0,
+    string? TargetFramework = null,
+    IReadOnlyList<IncompatibleApi>? IncompatibleApis = null)
 {
     /// <summary>Fraction of methods that are referenced by a test (0..1).</summary>
     public double BehaviorCoverage => ScannedMethods == 0 ? 0 : (double)TestedMethods / ScannedMethods;

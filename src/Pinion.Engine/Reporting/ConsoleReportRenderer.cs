@@ -27,7 +27,25 @@ public static class ConsoleReportRenderer
         sb.AppendLine($"High-risk & UNPROTECTED:  {ReportText.N(report.HighRiskUnprotected)} methods");
         sb.AppendLine($"Seams to introduce:       {ReportText.N(report.SeamsToIntroduce)} (high-risk methods that hard-wire deps — no test seam)");
         sb.AppendLine($"Migration landmines:      {ReportText.LandmineSummary(report.LandmineCounts)}");
+        if (report.TargetFramework is { Length: > 0 } tfm)
+        {
+            int n = report.IncompatibleApis?.Count ?? 0;
+            sb.AppendLine($"Unavailable on {tfm}:  {(n == 0 ? "none detected" : ReportText.N(n) + " framework type(s)")}");
+        }
         sb.AppendLine();
+
+        if (report.IncompatibleApis is { Count: > 0 } apis)
+        {
+            sb.AppendLine($"APIS UNAVAILABLE ON {report.TargetFramework}");
+            sb.AppendLine(new string('─', 60));
+            foreach (var a in apis.Take(15))
+                sb.AppendLine($"  {a.TypeName}  ({a.UsageCount} use(s))  first: {Path.GetFileName(a.FirstFilePath)}:{a.FirstLine}");
+            if (apis.Count > 15) sb.AppendLine($"  … and {apis.Count - 15} more");
+            sb.AppendLine(new string('─', 60));
+            sb.AppendLine("These must be replaced before the migration compiles. Lock the behavior of the");
+            sb.AppendLine("methods that use them FIRST, so the replacement can be proved equivalent.");
+            sb.AppendLine();
+        }
 
         sb.AppendLine("TOP RISK HOTSPOTS");
         string rule = new('─', 60);

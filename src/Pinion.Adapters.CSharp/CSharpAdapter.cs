@@ -20,6 +20,10 @@ public sealed class CSharpAdapter : ILanguageAdapter
     private readonly Action<string>? _log;
     private readonly bool _includeReferencedProjects;
 
+    /// <summary>Production compilations from the last AnalyzeAsync, retained so a target-framework
+    /// compatibility pass can resolve types without re-loading the solution.</summary>
+    private readonly List<Microsoft.CodeAnalysis.Compilation> _analyzed = new();
+
     public CSharpAdapter(Action<string>? log = null, bool includeReferencedProjects = false)
     {
         _log = log;
@@ -38,6 +42,23 @@ public sealed class CSharpAdapter : ILanguageAdapter
         SemanticModel Model,
         string Id,
         IReadOnlyList<string> Usings);
+
+    /// <summary>
+    /// Framework types this codebase uses that do not exist on <paramref name="targetTfm"/>. Call after
+    /// <see cref="AnalyzeAsync"/>. Returns empty when the target is not installed or the code did not
+    /// resolve — an unknown answer must never be rendered as a migration blocker.
+    /// </summary>
+    public IReadOnlyList<Pinion.Engine.Analysis.IncompatibleApi> CheckTargetCompatibility(string targetTfm, CancellationToken ct)
+    {
+        var all = new Dictionary<string, Pinion.Engine.Analysis.IncompatibleApi>(StringComparer.Ordinal);
+        foreach (var compilation in _analyzed)
+            foreach (var api in TargetFrameworkCompatibility.Check(compilation, targetTfm, _log, ct))
+                all[api.TypeName] = all.TryGetValue(api.TypeName, out var prev)
+                    ? prev with { UsageCount = prev.UsageCount + api.UsageCount }
+                    : api;
+
+        return all.Values.OrderByDescending(a => a.UsageCount).ThenBy(a => a.TypeName, StringComparer.Ordinal).ToList();
+    }
 
     public async Task<IReadOnlyList<CodeUnit>> AnalyzeAsync(string projectOrSolutionPath, CancellationToken ct)
     {
@@ -119,6 +140,7 @@ public sealed class CSharpAdapter : ILanguageAdapter
 
             var compilation = await project.GetCompilationAsync(ct).ConfigureAwait(false);
             if (compilation is null || IsTestProject(project, compilation)) continue;
+            _analyzed.Add(compilation);
 
             foreach (var tree in compilation.SyntaxTrees)
             {

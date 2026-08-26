@@ -44,6 +44,10 @@ internal static class AnalyzeCommand
             DefaultValueFactory = _ => ReportOptions.Default.HighRiskThreshold,
         };
 
+        var targetFrameworkOption = new Option<string?>("--target-framework", "--tfm")
+        {
+            Description = "Also check which framework APIs the code uses that do NOT exist on this target (e.g. net10.0). Resolved against that framework's reference assemblies — no catalog, no network.",
+        };
         var coverageOption = new Option<bool>("--coverage")
         {
             Description = "Run the target's tests under Coverlet and include executed coverage % (slower).",
@@ -76,7 +80,7 @@ internal static class AnalyzeCommand
 
         var cmd = new Command("analyze", "Scan a codebase and produce a Migration Readiness Report.")
         {
-            pathArg, formatOption, outOption, topOption, thresholdOption, coverageOption, mutationReportOption, openOption, forceOption, includeRefsOption, verboseOption,
+            pathArg, formatOption, outOption, topOption, thresholdOption, coverageOption, mutationReportOption, openOption, forceOption, includeRefsOption, verboseOption, targetFrameworkOption,
         };
 
         cmd.SetAction(async (parse, ct) =>
@@ -87,13 +91,14 @@ internal static class AnalyzeCommand
             int top = parse.GetValue(topOption);
             double threshold = parse.GetValue(thresholdOption);
             bool coverage = parse.GetValue(coverageOption);
+            string? targetFramework = parse.GetValue(targetFrameworkOption);
             var mutationReport = parse.GetValue(mutationReportOption);
             bool open = parse.GetValue(openOption);
             bool force = parse.GetValue(forceOption);
             bool includeRefs = parse.GetValue(includeRefsOption);
             bool verbose = parse.GetValue(verboseOption);
 
-            return await RunAsync(path, format, outFile, top, threshold, coverage, mutationReport, open, force, includeRefs, verbose, ct);
+            return await RunAsync(path, format, outFile, top, threshold, coverage, mutationReport, open, force, includeRefs, verbose, targetFramework, ct);
         });
 
         return cmd;
@@ -101,7 +106,7 @@ internal static class AnalyzeCommand
 
     private static async Task<int> RunAsync(
         string path, OutputFormat format, FileInfo? outFile,
-        int top, double threshold, bool collectCoverage, FileInfo? mutationReport, bool open, bool force, bool includeRefs, bool verbose, CancellationToken ct)
+        int top, double threshold, bool collectCoverage, FileInfo? mutationReport, bool open, bool force, bool includeRefs, bool verbose, string? targetFramework, CancellationToken ct)
     {
         Action<string>? log = verbose ? msg => Console.Error.WriteLine(msg) : null;
 
@@ -137,6 +142,14 @@ internal static class AnalyzeCommand
                 TopHotspots = top,
             };
             var report = ReportBuilder.Build(path, units, options, coverage: coverage);
+
+            // Opt-in: resolving against the target framework needs its reference assemblies, and the
+            // answer is only meaningful when the code actually resolved, so it is never implied.
+            if (targetFramework is { Length: > 0 } tfm && adapter is CSharpAdapter csharpAdapter)
+            {
+                var incompatible = csharpAdapter.CheckTargetCompatibility(tfm, ct);
+                report = report with { TargetFramework = tfm, IncompatibleApis = incompatible };
+            }
 
             string rendered = format switch
             {

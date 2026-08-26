@@ -7,6 +7,23 @@ All notable changes to Pinion are documented here. The format follows
 The **generated test/snapshot format** is versioned separately and stamped into every generated test
 (`// pinion-format: N`); a bump there is called out under the release that changes it.
 
+## [Unreleased]
+
+### Added
+- **`analyze --target-framework <tfm>`** reports the framework types your code uses that do NOT exist
+  on the target, with usage counts and the first file/line for each. It answers the question teams ask
+  before "how do I lock behavior?", namely "what will actually break?", and it lands in the Migration
+  Readiness Report next to the landmines and seams.
+
+  Resolved against the target framework's own **reference assemblies**, not a curated list of removed
+  APIs. Those ship with every SDK install, so the answer is exact for the version being targeted, needs
+  no network, and cannot go stale the way a hand-maintained catalog would.
+
+  Deliberately conservative: only types resolving to a framework assembly are checked, an uninstalled
+  target reports nothing rather than guessing, and code that did not resolve reports nothing rather than
+  flagging the whole codebase. Legacy projects often will not restore on a modern machine, and the
+  syntactic landmine detector still covers that case.
+
 ## [1.2.1] - 2026-08-26
 
 ### Fixed
