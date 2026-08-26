@@ -44,7 +44,7 @@ internal static class AnalyzeCommand
             DefaultValueFactory = _ => ReportOptions.Default.HighRiskThreshold,
         };
 
-        var targetFrameworkOption = new Option<string?>("--target-framework", "--tfm")
+        var targetFrameworkOption = new Option<string?>("--target-framework")
         {
             Description = "Also check which framework APIs the code uses that do NOT exist on this target (e.g. net10.0). Resolved against that framework's reference assemblies — no catalog, no network.",
         };

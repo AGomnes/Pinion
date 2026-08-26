@@ -204,8 +204,37 @@ dotnet src/Pinion.Cli/bin/Debug/net10.0/pinion.dll analyze samples/LegacyShop/Le
 | `--threshold <d>` | `3.5` | risk at/above which an untested method is "high-risk" |
 | `--coverage` | off | run the target's tests under Coverlet and include executed coverage % (slower) |
 | `--mutation-report <f>` | — | overlay per-file mutation scores in the HTML report (from `prove --report-json`) |
+| `--target-framework <tfm>` | — | also report framework APIs the code uses that do **not** exist on that target (e.g. `net10.0`). Resolved against that framework's reference assemblies — no catalog, no network |
 | `--include-refs` | off | when the target is a single `.csproj`, also analyze its referenced projects (default: just the target project) |
 | `-v, --verbose` | off | print Roslyn/MSBuild diagnostics to stderr |
+
+### What breaks on the target — `--target-framework`
+
+Before locking behavior, it helps to know what will not compile at all:
+
+```pwsh
+pinion analyze ./MyApp.csproj --target-framework net10.0
+```
+
+```
+Migration landmines:      2 WCF
+Unavailable on net10.0:  1 framework type(s)
+
+APIS UNAVAILABLE ON net10.0
+────────────────────────────────────────────────────────────
+  System.Threading.Lock  (1 use(s))  first: Ledger.cs:7
+────────────────────────────────────────────────────────────
+These must be replaced before the migration compiles. Lock the behavior of the
+methods that use them FIRST, so the replacement can be proved equivalent.
+```
+
+This is resolved against **the target framework's own reference assemblies**, which ship with every SDK
+install. There is no curated list of removed APIs to go stale, no network call, and the answer is exact
+for the version you are actually targeting.
+
+Deliberately quiet when it cannot be sure: an uninstalled target reports nothing, and code that did not
+resolve reports nothing rather than flagging your whole codebase. Legacy projects often will not restore
+on a modern machine — the syntactic landmine detection above still covers those.
 
 ## `quickstart` — the one-command golden path
 

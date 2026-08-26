@@ -7,7 +7,7 @@ All notable changes to Pinion are documented here. The format follows
 The **generated test/snapshot format** is versioned separately and stamped into every generated test
 (`// pinion-format: N`); a bump there is called out under the release that changes it.
 
-## [Unreleased]
+## [1.3.0] - 2026-08-26
 
 ### Added
 - **`analyze --target-framework <tfm>`** reports the framework types your code uses that do NOT exist
